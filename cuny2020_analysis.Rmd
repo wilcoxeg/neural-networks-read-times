@@ -116,13 +116,13 @@ d_lik_pre = train_data %>%
   ungroup() %>%
   mutate(seed = as.factor(seed))
 
-# metric <- "ΔLogLik"
-metric <- "-ΔMSE"
+metric <- "ΔLogLik"
+# metric <- "-ΔMSE"
 
 d_lik = d_lik_pre %>%
   right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
-  # mutate(delta_test_metric = test_lik - baseline_test_lik) %>%
-  mutate(delta_test_metric = -(test_mse - baseline_test_mse)) %>%
+  mutate(delta_test_metric = test_lik - baseline_test_lik) %>%
+  # mutate(delta_test_metric = -(test_mse - baseline_test_mse)) %>%
   select(-log_lik, -test_lik, -baseline_lik, -baseline_test_lik, -test_mse, -baseline_test_mse) %>%
   spread(corpus, delta_test_metric) %>%
   drop_na()
@@ -195,6 +195,31 @@ d_comb %>%
           axis.title=element_text(size=18),
           legend.position = "bottom")
 #ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
+```
+
+```{r}
+d_corp = d_comb %>%
+  filter(corpus == "dundee") %>%
+  filter(model != "5gram")
+
+# Compute residuals from metric ~ PPL relationship, and try to explain those
+d_corp$resid.ppl <- resid(lm(delta_test_metric ~ training:test_ppl, data=d_corp))
+
+# Now plot residual vs SG
+d_corp %>%
+  ggplot(aes(x=sg_score, y=resid.ppl)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    ylab(paste("Residual", metric))
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    #facet_grid(corpus~., scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
 ```
 
 
