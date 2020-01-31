@@ -13,8 +13,20 @@ library(readxl)
 library(RColorBrewer)
 library(viridis)
 library(Hmisc)
+library(mvtnorm)
 ```
 
+```{r}
+# Compute the log-likelihood of a new dataset using a fit lme4 model.
+logLik_test <- function(lm, data) {
+  predictions <- predict(lm, data, re.form=NA)
+  # Get fitted estimated std.dev.
+  stdev <- sigma(lm)
+  # For each prediction--observation, get the density p(obs | N(predicted, model_sigma)) and reduce
+  density <- dmvnorm(data, predictions, as.matrix(stdev), log=True)
+  return(density)
+}
+```
 
 ```{r}
 lm_data = read.csv("coded_results_spr.csv") %>%
