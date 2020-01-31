@@ -5,19 +5,20 @@ output: html_notebook
 
 ```{r}
 library(tidyverse)
-library(brms)
 library(lme4)
 library(lmerTest)
 library(plotrix)
 library(stringr)
 library(readxl)
 library(RColorBrewer)
+library(viridis)
 library(Hmisc)
 ```
 
+
 ```{r}
-lm_data = read.csv("coded_results.csv") %>%
-  select(-X, x1, x2)
+lm_data = read.csv("coded_results_spr.csv") %>%
+  select(-X)
 ```
 
 ```{r}
@@ -32,144 +33,7 @@ brown_spr = read.csv("./corpora/brown_spr.csv") %>%
 brown = merge(brown, brown_spr, by="code") %>%
   filter(surprisal > 0) %>%
   mutate(seed = as.factor(seed)) %>%
-  mutate(surp_fac = cut_number(surprisal, n=10))
-```
-
-
-```{r}
-brown %>%
-  filter(model == "ordered-neurons") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
-              upper=m+1.96*s,
-              lower=m-1.96*s) %>%
-    ungroup() %>%
-
-  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/brown-on.png",height=5,width=10)
-
-```
-
-```{r}
-d_corr = brown %>%
-  filter(model == "ordered-neurons", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "ordered-neurons", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "ordered-neurons", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "ordered-neurons", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-```
-
-```{r}
-brown %>%
-  filter(model == "rnng") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
-              upper=m+1.96*s,
-              lower=m-1.96*s) %>%
-    ungroup() %>%
-
-  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/brown-rnng.png",height=5,width=10)
-
-```
-
-```{r}
-d_corr = brown %>%
-  filter(model == "rnng", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "rnng", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "rnng", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "rnng", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-```
-
-
-```{r}
-brown %>%
-  filter(model == "vanilla") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
-              upper=m+1.96*s,
-              lower=m-1.96*s) %>%
-    ungroup() %>%
-
-  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/brown-vanilla.png",height=5,width=10)
-
-```
-
-```{r}
-d_corr = brown %>%
-  filter(model == "vanilla", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "vanilla", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "vanilla", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = brown %>%
-  filter(model == "vanilla", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
+  mutate(surp_fac = cut(surprisal, breaks = bins, labels=FALSE))
 ```
 
 ```{r}
@@ -179,149 +43,382 @@ natural = lm_data %>%
 
 natural_spr = read.csv("./corpora/natural_stories_rts.csv", sep="\t")%>%
   mutate(code = paste(zone, item, sep = "_")) %>%
-  group_by(code) %>%
+  group_by(code, word) %>%
     summarise(rt=mean(RT)) %>%
-  ungroup()
+  ungroup() %>%
+  select(-word)
 
 natural = merge(natural, natural_spr, by="code") %>%
   filter(surprisal > 0) %>%
   mutate(seed = as.factor(seed)) %>%
-  mutate(surp_fac = cut_number(surprisal, n=10))
+  mutate(surp_fac = cut(surprisal, breaks = bins, labels=FALSE))
+
+```
+
+
+```{r}
+all_data = rbind(brown, natural) %>%
+  select(-code, -surp_fac) %>%
+  rename("psychometric" = rt)
+
+dundee = read.csv("coded_results_dundee.csv") %>%
+  rename("sent_pos" = position,
+         "psychometric" = gaze) %>%
+  mutate(corpus = "dundee") %>%
+  select(-X, -text) %>%
+  mutate(seed = as.factor(seed))
+
+all_data = rbind(all_data, dundee) %>%
+  drop_na()
+
+d_extremes = all_data %>%
+  group_by(word, corpus, model, training, seed) %>%
+    mutate(psycho_mean = mean(psychometric),
+           psycho_std = std.error(psychometric),
+           n = n()) %>%
+  ungroup()
+
+d_extremes = d_extremes %>%
+  mutate(extr = if_else(psychometric < psycho_mean - (2 * psycho_std), "lower", "mid"),
+         extr = if_else(psychometric > psycho_mean + (2 * psycho_std), "upper", extr))
+
+upper = d_extremes %>%
+  filter(extr == "upper")
+lower = d_extremes %>%
+  filter(extr == "lower")
+
+#all_data = upper %>%
+  f#ilter(model != "5gram")
+
+```
+
+
+
+```{r}
+baselines = all_data %>%
+  group_by(training, model, seed, corpus) %>%
+      summarise(baseline_lik = logLik(lm(psychometric ~ len + freq + sent_pos), REML = F)) %>%
+  ungroup()
+baselines
+
+d_lik = all_data %>%
+  group_by(model, training, seed, corpus) %>%
+    summarise(log_lik = logLik(lm(psychometric ~ surprisal + len + freq + sent_pos), REML = F)) %>%
+  ungroup() %>%
+  mutate(seed = as.factor(seed))
+
+d_lik = d_lik %>%
+  right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
+  mutate(delta_lik = log_lik - baseline_lik) %>%
+  select(-log_lik, -baseline_lik) %>%
+  spread(corpus, delta_lik) %>%
+  drop_na()
+
 
 ```
 
 ```{r}
-natural %>%
-  filter(model == "vanilla") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
+baselines = all_data %>%
+  group_by(training, model, seed, corpus) %>%
+      summarise(baseline_lik = logLik.gam(gam(psychometric ~ s(len, k=3, fx=T) + s(freq, k=3, fx=T) + s(sent_pos, k=3, fx=T), method = "ML"))) %>%
+  ungroup()
+baselines
+
+d_l = all_data %>%
+  group_by(model, training, seed, corpus) %>%
+      summarise(log_lik = logLik.gam(gam(psychometric ~ s(surprisal, k=3, fx=T) + s(len, k=3, fx=T) + s(freq, k=3, fx=T) + s(sent_pos, k=3, fx=T), method = "ML"))) %>%
+  ungroup() %>%
+  mutate(seed = as.factor(seed))
+
+d_lik = d_l %>%
+  right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
+  #mutate(delta_lik = log_lik - baseline_lik) %>%
+  mutate(delta_lik = log_lik - baseline_lik) %>%
+  #select(-log_lik, -baseline_lik) %>%
+  select(-log_lik, -baseline_lik) %>%
+  spread(corpus, delta_lik) %>%
+  drop_na()
+
+
+```
+
+
+
+
+
+```{r}
+  
+d_all = read.csv("all_results_with_ppl_sg.csv") %>%
+  mutate(train_size = case_when(training == "bllip-lg" ~ 42,
+                                training == "bllip-md" ~ 15,
+                                training == "bllip-sm" ~ 5,
+                                training == "bllip-xs" ~ 1)) %>%
+  mutate(seed = as.factor(seed)) %>%
+  select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1)
+  
+
+d_comb = d_all %>%
+  right_join(d_lik, by=c("seed", "training", "model")) %>%
+  drop_na() %>%
+  gather(corpus, delta_lik, 7:9) %>%
+  filter(model != "ordered-neurons")
+
+
+```
+
+
+```{r}
+
+d_comb %>%
+  #filter(corpus=="bnc-brown") %>%
+  ggplot(aes(x=sg_score, y=delta_lik, color=training)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    ylab("ΔLogLik") +
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(~corpus, scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
+
+```
+
+```{r}
+# Correlation Testing
+#print("Natural Stories")
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-xs"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-sm"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-md"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-lg"))
+
+#print("Dundee")
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-xs"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-sm"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-md"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-lg"))
+
+#print("Bnc-Brown")
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-xs"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-sm"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-md"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-lg"))
+
+
+```
+```{r}
+
+d_comb %>%
+  ggplot(aes(x=sg_score, y=delta_lik, color=training)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    ylab("ΔLogLik") +
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(corpus~., scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
+
+```
+
+```{r}
+
+d_comb %>%
+  filter(mode != "5gram") %>%
+  ggplot(aes(x=sg_score, y=delta_lik, color=test_ppl)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    ylab("ΔLogLik") +
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(corpus~., scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
+
+```
+
+```{r}
+d_corp = d_comb %>%
+  #filter(corpus == "dundee")
+  filter(model != "5gram")
+lm1 = lm(delta_lik ~ training:test_ppl, data = d_corp)
+lm2 = lm(delta_lik ~ training:test_ppl + sg_score, data = d_corp)
+anova(lm1, lm2)
+summary(lm2)
+
+
+```
+
+
+```{r}
+# Correlation Testing
+
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "rnng"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "vanilla"))
+
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "rnng"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "vanilla"))
+
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "rnng"))
+#cor.test(formula = ~ sg_score + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "vanilla"))
+
+```
+
+
+```{r}
+d_comb %>%
+  filter(model != "5gram") %>%
+  ggplot(aes(x=test_ppl, y=delta_lik, color=training)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=2.5) +
+    ylab("ΔLogLik") +
+    xlab("Test Perplexity") +
+    ggtitle("Test Perplexity vs. Predictive Power") +
+    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    facet_grid(corpus~., scales="free") +
+    theme(axis.text=element_text(size=12),
+          strip.text.x = element_text(size=12),
+          legend.text=element_text(size=12),
+          axis.title=element_text(size=12),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/ppl_loglik.png",height=5,width=6)
+
+```
+
+```{r}
+# Correlation Testing
+#print("Natural Stories")
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-xs"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-sm"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-md"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", training == "bllip-lg"))
+
+#print("Dundee")
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-xs"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-sm"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-md"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "dundee", training == "bllip-lg"))
+
+#print("Bnc-Brown")
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-xs"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-sm"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-md"))
+#cor.test(formula = ~ test_ppl + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", training == "bllip-lg"))
+
+
+```
+
+
+```{r}
+d_comb %>%
+  mutate(train_size = log(train_size)) %>%
+  ggplot(aes(x=train_size, y=delta_lik, color=model)) +
+    geom_smooth(method="lm", se=T, alpha=0.5) +
+    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    ylab("ΔLogLik") +
+    xlab("Log Million Training Tokens") +
+    ggtitle("Training Size vs. Predictive Power") +
+    facet_grid(corpus~model, scales="free") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/training_loglik.png",height=5,width=6)
+
+```
+
+
+```{r}
+d_comb %>%
+  mutate(train_size = log(train_size)) %>%
+  ggplot(aes(x=train_size, y=sg_score, color=model)) +
+    geom_smooth(method="lm", se=T, alpha=0.5) +
+    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    ylab("SG SCore") +
+    xlab("Log Million Training Tokens") +
+    ggtitle("Training Size vs. Syntactic Generalization") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(~model, scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/training_sg.png",height=5,width=6)
+
+```
+
+```{r}
+# Correlation Testing
+
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "rnng"))
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "vanilla"))
+
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "rnng"))
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "vanilla"))
+
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "rnng"))
+#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "vanilla"))
+
+#cor.test(formula = ~ train_size + sg_score, data = d_comb %>% filter(corpus == "bnc-brown", model == "rnng"))
+#cor.test(formula = ~ train_size + sg_score, data = d_comb %>% filter(corpus == "bnc-brown", model == "vanilla"))
+
+#mean(c(0.9118399, 0.7408788, 0.8731879, 0.9482418, 0.8596604, 0.649311 ))
+#mean(c(0.5496241, 0.5285862 ))
+
+
+```
+
+```{r}
+all_data %>%
+  filter(model != "ordered-neurons") %>%
+  filter(surprisal < 15, surprisal > 0) %>%
+  mutate(surp_fac = cut(surprisal, 15, labels = F)) %>%
+  group_by(model, corpus, training, surp_fac) %>%
+    summarise(m=mean(psychometric),
+              s=std.error(psychometric),
               upper=m+1.96*s,
               lower=m-1.96*s) %>%
     ungroup() %>%
-
   ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
+    stat_smooth(method="lm", se=T, alpha=0.5) +
+    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/natural-vanilla.png",height=5,width=10)
-
-```
-
-```{r}
-d_corr = natural %>%
-  filter(model == "vanilla", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "vanilla", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "vanilla", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "vanilla", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-```
-
-```{r}
-natural %>%
-  filter(model == "ordered-neurons") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
-              upper=m+1.96*s,
-              lower=m-1.96*s) %>%
-    ungroup() %>%
-
-  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/natural-on.png",height=5,width=10)
-
-```
-```{r}
-d_corr = natural %>%
-  filter(model == "ordered-neurons", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "ordered-neurons", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "ordered-neurons", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "ordered-neurons", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
+    ylab("Psychometric (ms)") +
+    xlab("Surprisal (bits)") +
+    ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
+    facet_grid(corpus~model, scales = "free") +
+    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    theme(axis.text=element_text(size=14),
+          axis.text.x = element_text(angle = 90, hjust = 1),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/surp_corr.png",height=5,width=12)
 
 ```
 
 
-```{r}
-natural %>%
-  filter(model == "rnng") %>%
-  group_by(training, surp_fac) %>%
-    summarise(m=mean(rt),
-              s=std.error(rt),
-              upper=m+1.96*s,
-              lower=m-1.96*s) %>%
-    ungroup() %>%
 
-  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
-    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Read Time") +
-    xlab("Surprisal") +
-    facet_wrap(~training) +
-    #facet_grid(model~training) +
-    theme(axis.text=element_text(size=10, angle=45, hjust=1))
-ggsave("./images/natural-rnng.png",height=5,width=10)
 
-```
 
-```{r}
-d_corr = natural %>%
-  filter(model == "rnng", training == "bllip-xs") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
 
-d_corr = natural %>%
-  filter(model == "rnng", training == "bllip-sm") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
 
-d_corr = natural %>%
-  filter(model == "rnng", training == "bllip-md") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-d_corr = natural %>%
-  filter(model == "rnng", training == "bllip-lg") %>%
-  select(surprisal, rt)
-rcorr(as.matrix(d_corr))
-
-```
 
