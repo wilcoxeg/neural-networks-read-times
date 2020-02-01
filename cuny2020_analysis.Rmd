@@ -3,6 +3,8 @@ title: "CUNY 2020 Analysis"
 output: html_notebook
 ---
 
+# Packages and utilities
+
 ```{r}
 library(tidyverse)
 library(lme4)
@@ -27,14 +29,18 @@ logLik_test <- function(lm, test_X, test_y) {
   return(density)
 }
 
+# Compute MSE of a new dataset using a fit lme4 model.
 mse_test <- function(lm, test_X, test_y) {
   return(mean((predict(lm, test_X, re.form=NA) - test_y) ^ 2))
 }
 
+# Sanity checks
 #mylm <- lm(psychometric ~ len + freq + sent_pos, data=train_data)
 #c(logLik(mylm), logLik_test(mylm, train_data, train_data$psychometric))
 #logLik_test(mylm, test_data, test_data$psychometric)
 ```
+
+# Data loading and preprocessing
 
 ```{r}
 lm_data = read.csv("coded_results_spr.csv") %>%
@@ -47,6 +53,7 @@ brown = lm_data %>%
 
 brown_spr = read.csv("./corpora/brown_spr.csv") %>%
   group_by(code) %>%
+    # Compute mean RT per token, pooling together subjects
     summarise(rt=mean(time)) %>%
   ungroup()
 
@@ -63,6 +70,7 @@ natural = lm_data %>%
 natural_spr = read.csv("./corpora/natural_stories_rts.csv", sep="\t")%>%
   mutate(code = paste(zone, item, sep = "_")) %>%
   group_by(code, word) %>%
+    # Compute mean RT per token, pooling together subjects
     summarise(rt=mean(RT)) %>%
   ungroup() %>%
   select(-word)
@@ -91,16 +99,18 @@ all_data = rbind(all_data, dundee) %>%
 
 ```
 
-
+# Linear model training and evaluation
 
 ```{r}
 
+# Randomly subsample data to produce train/test splits.
 train_size <- floor(0.8 * nrow(all_data))
 train_indices = sample(seq_len(nrow(all_data)), size=train_size)
 train_data <- all_data[train_indices, ]
 test_data <- all_data[-train_indices, ]
 
 # Compute linear model stats for the given training data subset and full test data.
+# Automatically subsets the test data to match the relevant group for which we are training a linear model.
 get_lm_data <- function(df, test_data, formula) {
   this_lm <- lm(formula, data=df);
   this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
@@ -110,46 +120,32 @@ get_lm_data <- function(df, test_data, formula) {
             test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
 }
 
+# Compute a baseline linear model for each model--training--seed--RT-corpus combination.
 baselines = train_data %>%
   group_by(model, training, seed, corpus) %>%
     do(get_lm_data(., test_data, psychometric ~ len + freq + sent_pos)) %>%
   ungroup() %>%
   mutate(seed = as.factor(seed))
 
-# Hacky version
-# baselines = train_data %>%
-#   group_by(training, model, seed, corpus) %>%
-#     summarise(baseline_lik = logLik(lm(psychometric ~ len + freq + sent_pos, data=.), REML=F),
-#               baseline_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
-#               #baseline_test_mse = mse_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
-#               ) %>%
-#   ungroup()
-# baselines
-
-# Nicely grouped version
-d_lik_pre = train_data %>%
+# Compute a full linear model for each model--training--seed-RT-corpus combination
+full_models = train_data %>%
   group_by(model, training, seed, corpus) %>%
     do(get_lm_data(., test_data, psychometric ~ surprisal + len + freq + sent_pos)) %>%
   ungroup() %>%
   mutate(seed = as.factor(seed))
+```
 
-# Hacky version
-# d_lik_pre = train_data %>%
-#   group_by(model, training, seed, corpus) %>%
-#     summarise(log_lik = logLik(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), REML = F),
-#               test_lik = logLik_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
-#               #test_mse = mse_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
-#               ) %>%
-#   ungroup() %>%
-#   mutate(seed = as.factor(seed))
+```{r}
 
 metric <- "ΔLogLik"
 # metric <- "-ΔMSE"
 
-d_lik = d_lik_pre %>%
-  right_join(baselines, suffix=c(".full", ".baseline"), by=c("seed", "training", "model", "corpus")) %>%
+d_lik = full_models %>%
+  right_join(baselines, suffix=c(".full", ".baseline"),
+             by=c("seed", "training", "model", "corpus")) %>%
   mutate(delta_test_metric = test_lik.full - test_lik.baseline) %>%
-  # mutate(delta_test_metric = -(test_mse - baseline_test_mse)) %>%
+  # mutate(delta_test_metric = -(test_mse.full - test_mse.baseline)) %>%
+  # Remove the raw metrics and keep just the delta.
   select(-log_lik.full, -test_lik.full, -test_mse.full,
          -log_lik.baseline, -test_lik.baseline, -test_mse.baseline
          ) %>%
@@ -157,6 +153,10 @@ d_lik = d_lik_pre %>%
   drop_na()
 
 d_lik
+```
+
+```{r}
+# Sanity check: training on train+test data should yield improved performance over training on just training data. (When evaluating on test data.)
 
 # full_baselines = all_data %>%
 #   group_by(model, training, seed, corpus) %>%
@@ -171,6 +171,7 @@ d_lik
 #   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
 ```
 
+# Load model data (SyntaxGym, PPL)
 
 ```{r}
   
@@ -195,6 +196,7 @@ d_comb
 
 ```
 
+# Visualizations
 
 ```{r}
 
