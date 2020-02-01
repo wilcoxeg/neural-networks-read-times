@@ -115,7 +115,7 @@ get_lm_data <- function(df, test_data, formula) {
   this_lm <- lm(formula, data=df);
   this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
   summarise(df,
-            log_lik = logLik(this_lm, REML = F),
+            log_lik = as.numeric(logLik(this_lm, REML = F)),
             test_lik = logLik_test(this_lm, this_test_data, this_test_data$psychometric),
             test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
 }
