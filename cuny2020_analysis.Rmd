@@ -205,7 +205,9 @@ d_comb <- d_comb %>%
 
 # Visualizations
 
-```{r}
+## Predictive power and SG
+
+```{r By training corpus}
 
 d_comb %>%
   ggplot(aes(x=sg_score, y=delta_test_metric, color=training)) +
@@ -225,7 +227,7 @@ d_comb %>%
 
 ```
 
-```{r}
+```{r By model}
 
 d_comb %>%
   ggplot(aes(x=sg_score, y=delta_test_metric, color=model)) +
@@ -244,7 +246,11 @@ d_comb %>%
 #ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
 ```
 
-```{r}
+### Regression analyses
+
+We control for effects of perplexity by relating the residuals of a `performance ~ PPL` regression to SG score.
+
+```{r Residualized regression}
 d_corp = d_comb %>%
   group_by(corpus) %>%
     # Compute residuals from an RT ~ PPL regression for each model--training--seed
@@ -271,7 +277,7 @@ d_corp %>%
 ```
 
 
-```{r}
+```{r Stepwise regression}
 d_corp = d_comb %>%
   filter(corpus == "natural-stories")
 
@@ -283,6 +289,7 @@ summary(lm2)
 
 ```
 
+## Predictive power and perplexity
 
 ```{r}
 d_comb %>%
@@ -303,7 +310,9 @@ d_comb %>%
 
 ```
 
-```{r}
+## Effect of training data size
+
+```{r On predictive power}
 d_comb %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=delta_test_metric, color=model)) +
@@ -324,7 +333,7 @@ d_comb %>%
 ```
 
 
-```{r}
+```{r On SG score}
 d_comb %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=sg_score, color=model)) +
@@ -344,26 +353,7 @@ d_comb %>%
 
 ```
 
-```{r}
-# Correlation Testing
-
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "rnng"))
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "natural-stories", model == "vanilla"))
-
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "rnng"))
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "dundee", model == "vanilla"))
-
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "rnng"))
-#cor.test(formula = ~ train_size + delta_lik, data = d_comb %>% filter(corpus == "bnc-brown", model == "vanilla"))
-
-#cor.test(formula = ~ train_size + sg_score, data = d_comb %>% filter(corpus == "bnc-brown", model == "rnng"))
-#cor.test(formula = ~ train_size + sg_score, data = d_comb %>% filter(corpus == "bnc-brown", model == "vanilla"))
-
-#mean(c(0.9118399, 0.7408788, 0.8731879, 0.9482418, 0.8596604, 0.649311 ))
-#mean(c(0.5496241, 0.5285862 ))
-
-
-```
+## Smith & Levy reproduction
 
 ```{r}
 all_data %>%
