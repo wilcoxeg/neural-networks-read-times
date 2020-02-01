@@ -181,17 +181,13 @@ d_all = read.csv("all_results_with_ppl_sg.csv") %>%
                                 training == "bllip-sm" ~ 5,
                                 training == "bllip-xs" ~ 1)) %>%
   mutate(seed = as.factor(seed)) %>%
-  select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1)
-
-d_all
-  
+  select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
+  distinct(model, training, seed, .keep_all = TRUE)
 
 d_comb = d_all %>%
   right_join(d_lik, by=c("seed", "training", "model")) %>%
   drop_na() %>%
   gather(corpus, delta_test_metric, 7:9)
-
-d_comb
 
 
 ```
