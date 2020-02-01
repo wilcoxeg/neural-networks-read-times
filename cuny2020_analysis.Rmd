@@ -237,22 +237,24 @@ d_comb %>%
 
 ```{r}
 d_corp = d_comb %>%
-  filter(corpus == "dundee") %>%
-  filter(model != "5gram")
-
-# Compute residuals from metric ~ PPL relationship, and try to explain those
-d_corp$resid.ppl <- resid(lm(delta_test_metric ~ training:test_ppl, data=d_corp))
+  filter(model != "5gram") %>%
+  group_by(corpus) %>%
+    # Compute residuals from an RT ~ PPL regression for each model--training--seed
+    mutate(resid.ppl = resid(lm(delta_test_metric ~ training:test_ppl))) %>%
+  ungroup()
 
 # Now plot residual vs SG
 d_corp %>%
-  ggplot(aes(x=sg_score, y=resid.ppl)) +
+  ggplot(aes(x=sg_score, y=resid.ppl,
+             color=model
+             )) +
     geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3) +
     ylab(paste("Residual", metric)) +
     xlab("Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
     #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
-    #facet_grid(corpus~., scales="free") +
+    facet_grid(corpus~., scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
