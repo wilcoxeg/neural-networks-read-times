@@ -100,61 +100,75 @@ train_indices = sample(seq_len(nrow(all_data)), size=train_size)
 train_data <- all_data[train_indices, ]
 test_data <- all_data[-train_indices, ]
 
+# Compute linear model stats for the given training data subset and full test data.
+get_lm_data <- function(df, test_data, formula) {
+  this_lm <- lm(formula, data=df);
+  this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
+  summarise(df,
+            log_lik = logLik(this_lm, REML = F),
+            test_lik = logLik_test(this_lm, this_test_data, this_test_data$psychometric),
+            test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
+}
+
 baselines = train_data %>%
-  group_by(training, model, seed, corpus) %>%
-    summarise(baseline_lik = logLik(lm(psychometric ~ len + freq + sent_pos, data=.), REML=F),
-              baseline_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
-              #baseline_test_mse = mse_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
-              ) %>%
-  ungroup()
-baselines
-
-# Nicely grouped version
-# d_lik_pre = train_data %>%
-#   group_by(model, training, seed, corpus) %>%
-#   {
-#     {this_lm <- lm(psychometric ~ surprisal + len + freq + sent_pos, data=.);
-#      this_test_data <- semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))} %>%
-#     summarise(log_lik = logLik(this_lm, REML = F),
-#               test_lik = logLik_test(this_lm, this_test_data, this_test_data$psychometric),
-#               test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
-#   } %>%
-#   ungroup() %>%
-#   mutate(seed = as.factor(seed))
-
-d_lik_pre = train_data %>%
   group_by(model, training, seed, corpus) %>%
-    summarise(log_lik = logLik(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), REML = F),
-              test_lik = logLik_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
-              #test_mse = mse_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
-              ) %>%
+    do(get_lm_data(., test_data, psychometric ~ len + freq + sent_pos)) %>%
   ungroup() %>%
   mutate(seed = as.factor(seed))
+
+# Hacky version
+# baselines = train_data %>%
+#   group_by(training, model, seed, corpus) %>%
+#     summarise(baseline_lik = logLik(lm(psychometric ~ len + freq + sent_pos, data=.), REML=F),
+#               baseline_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
+#               #baseline_test_mse = mse_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
+#               ) %>%
+#   ungroup()
+# baselines
+
+# Nicely grouped version
+d_lik_pre = train_data %>%
+  group_by(model, training, seed, corpus) %>%
+    do(get_lm_data(., test_data, psychometric ~ surprisal + len + freq + sent_pos)) %>%
+  ungroup() %>%
+  mutate(seed = as.factor(seed))
+
+# Hacky version
+# d_lik_pre = train_data %>%
+#   group_by(model, training, seed, corpus) %>%
+#     summarise(log_lik = logLik(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), REML = F),
+#               test_lik = logLik_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric),
+#               #test_mse = mse_test(lm(psychometric ~ surprisal + len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)
+#               ) %>%
+#   ungroup() %>%
+#   mutate(seed = as.factor(seed))
 
 metric <- "ΔLogLik"
 # metric <- "-ΔMSE"
 
 d_lik = d_lik_pre %>%
-  right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
-  mutate(delta_test_metric = test_lik - baseline_test_lik) %>%
+  right_join(baselines, suffix=c(".full", ".baseline"), by=c("seed", "training", "model", "corpus")) %>%
+  mutate(delta_test_metric = test_lik.full - test_lik.baseline) %>%
   # mutate(delta_test_metric = -(test_mse - baseline_test_mse)) %>%
-  select(-log_lik, -test_lik, -baseline_lik, -baseline_test_lik, -test_mse, -baseline_test_mse) %>%
+  select(-log_lik.full, -test_lik.full, -test_mse.full,
+         -log_lik.baseline, -test_lik.baseline, -test_mse.baseline
+         ) %>%
   spread(corpus, delta_test_metric) %>%
   drop_na()
 
 d_lik
 
-full_baselines = all_data %>%
-  group_by(model, training, seed, corpus) %>%
-  summarise(baseline_train_all_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")))) %>%
-  ungroup()
-full_baselines
-
-full_baselines %>%
-  right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
-  mutate(delta=baseline_train_all_test_lik-baseline_test_lik) %>%
-  select(-baseline_test_mse, -baseline_lik) # %>%
-  #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
+# full_baselines = all_data %>%
+#   group_by(model, training, seed, corpus) %>%
+#   summarise(baseline_train_all_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)) %>%
+#   ungroup()
+# full_baselines
+# 
+# full_baselines %>%
+#   right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
+#   mutate(delta=baseline_train_all_test_lik-baseline_test_lik) %>%
+#   select(-baseline_lik) # %>%
+#   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
 ```
 
 
