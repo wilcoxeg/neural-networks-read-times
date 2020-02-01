@@ -189,6 +189,17 @@ d_comb = d_all %>%
   drop_na() %>%
   gather(corpus, delta_test_metric, 7:9)
 
+```
+
+# Final data preprocessing
+
+```{r Filter models and/or corpora}
+
+# Exclude ordered-neurons from all analyses.
+d_all <- d_all %>%
+  filter(model != "ordered-neurons")
+d_comb <- d_comb %>%
+  filter(model != "ordered-neurons")
 
 ```
 
@@ -217,8 +228,6 @@ d_comb %>%
 ```{r}
 
 d_comb %>%
-  #filter(model != "5gram") %>%
-  #filter(corpus == "dundee") %>%
   ggplot(aes(x=sg_score, y=delta_test_metric, color=model)) +
     geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3) +
@@ -237,7 +246,6 @@ d_comb %>%
 
 ```{r}
 d_corp = d_comb %>%
-  filter(model != "5gram") %>%
   group_by(corpus) %>%
     # Compute residuals from an RT ~ PPL regression for each model--training--seed
     mutate(resid.ppl = resid(lm(delta_test_metric ~ training:test_ppl))) %>%
@@ -265,8 +273,8 @@ d_corp %>%
 
 ```{r}
 d_corp = d_comb %>%
-  filter(corpus == "dundee") %>%
-  filter(model != "5gram")
+  filter(corpus == "natural-stories")
+
 lm1 = lm(delta_test_metric ~ training:test_ppl, data = d_corp)
 lm2 = lm(delta_test_metric ~ training:test_ppl + sg_score, data = d_corp)
 anova(lm1, lm2)
@@ -278,9 +286,6 @@ summary(lm2)
 
 ```{r}
 d_comb %>%
-  filter(model != "5gram") %>%
-  filter(model != "ordered-neurons") %>%
-  #filter(corpus == "dundee") %>%
   ggplot(aes(x=test_ppl, y=delta_test_metric, color=training)) +
     geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=2.5) +
@@ -362,7 +367,6 @@ d_comb %>%
 
 ```{r}
 all_data %>%
-  filter(model != "ordered-neurons") %>%
   filter(surprisal < 15, surprisal > 0) %>%
   mutate(surp_fac = cut(surprisal, 15, labels = F)) %>%
   group_by(model, corpus, training, surp_fac) %>%
