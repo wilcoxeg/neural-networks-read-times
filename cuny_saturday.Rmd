@@ -168,10 +168,11 @@ full_model_results = data.frame()
 
 #Randomly shuffle the data
 all_data<-all_data[sample(nrow(all_data)),]
-#Create 10 equally size folds
-folds <- cut(seq(1,nrow(all_data)),breaks=10,labels=FALSE)
+#Create K equally size folds
+K = 10
+folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 #Perform 10 fold cross validation
-for(i in 1:10) {
+for(i in 1:K) {
   #Segement your data by fold using the which() function 
   testIndexes <- which(folds==i,arr.ind=TRUE)
   test_data <- all_data[testIndexes, ]
@@ -182,7 +183,8 @@ for(i in 1:10) {
     group_by(model, training, seed, corpus) %>%
       do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
     ungroup() %>%
-    mutate(seed = as.factor(seed))
+    mutate(seed = as.factor(seed),
+           fold = i)
   
   baseline_results = rbind(baseline_results, baselines)
   
@@ -191,7 +193,8 @@ for(i in 1:10) {
     group_by(model, training, seed, corpus) %>%
       do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
     ungroup() %>%
-    mutate(seed = as.factor(seed))
+    mutate(seed = as.factor(seed),
+           fold = i)
   
   full_model_results = rbind(full_model_results, full_models)
 }
@@ -205,22 +208,27 @@ write.csv(baseline_results, "baseline_results.csv")
 full_model_results = read.csv("full_model_results.csv")
 baseline_results = read.csv("baseline_results.csv")
 
-
-baselines = baseline_results %>%
-  group_by(model, training, seed, corpus) %>%
-    summarise(log_lik = mean(log_lik),
-              test_lik = mean(test_lik),
-              test_mse = mean(test_mse)) %>%
+# Join baseline models with full models and compare performance within-fold.
+model_deltas = baseline_results %>%
+  right_join(full_model_results, suffix=c(".baseline", ".full"),
+             by=c("model", "training", "seed", "corpus", "fold")) %>%
+  
+  mutate(seed = as.factor(seed)) %>%
+  
+  # Compute per-fold deltas.
+  group_by(model, training, seed, corpus, fold) %>%
+    mutate(delta_log_lik = test_lik.full - test_lik.baseline,
+           delta_mse = test_mse.full - test_mse.baseline) %>%
   ungroup() %>%
-  mutate(seed=as.factor(seed))
-
-full_models = full_model_results %>%
+  select(model, training, seed, corpus, fold,
+         delta_log_lik, delta_mse) %>%
+  
+  # Now compute across-fold delta statistics for each model--training--seed--corpus.
   group_by(model, training, seed, corpus) %>%
-    summarise(log_lik = mean(log_lik),
-              test_lik = mean(test_lik),
-              test_mse = mean(test_mse)) %>%
-  ungroup() %>%
-  mutate(seed=as.factor(seed))
+    summarise(mean_delta_log_lik = mean(delta_log_lik),
+             sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)),
+             mean_delta_mse = mean(delta_mse),
+             sem_delta_mse = sd(delta_mse) / sqrt(length(delta_mse)))
 
 ```
 
@@ -260,21 +268,16 @@ full_models = full_model_results %>%
 metric <- "ΔLogLik"
 #metric <- "-ΔMSE"
 
-d_lik = full_models %>%
-  right_join(baselines, suffix=c(".full", ".baseline"),
-             by=c("seed", "training", "model", "corpus")) %>%
+d_lik = model_deltas %>%
+  # Retrieve the current test metric
+  mutate(delta_test_mean = mean_delta_log_lik,
+         delta_test_sem = sem_delta_log_lik) %>%
+  # mutate(delta_test_mean = mean_delta_mse,
+  #        delta_test_sem = sem_delta_mse)
   
-  # Compute delta(some metric). (Choose likelihood vs. MSE here.)
-  mutate(delta_test_metric = test_lik.full - test_lik.baseline) %>%
-  #mutate(delta_test_metric = -(test_mse.full - test_mse.baseline)) %>%
-  
-  # Remove the raw metrics and keep just the delta.
-  select(-log_lik.full, -test_lik.full, -test_mse.full,
-         -log_lik.baseline, -test_lik.baseline, -test_mse.baseline
-          ) %>%
-  #select(-test_lik.full, -test_lik.baseline) %>%
-  spread(corpus, delta_test_metric) %>%
-  drop_na()
+  # Remove the raw metrics.
+  select(-mean_delta_log_lik, -sem_delta_log_lik,
+         -mean_delta_mse, -sem_delta_mse)
 
 d_lik
 ```
@@ -308,13 +311,16 @@ d_all = read.csv("all_results_with_ppl_sg.csv") %>%
   distinct(model, training, seed, .keep_all = TRUE)
 
 # TODO: Why are the seeds and models not the same in the two data frames?
+# I think we have some 5gram seeds with an extra "1" in the factor name. This is borking things.
+# TODO check with jenn/ethan about this
 table(d_all$seed)
 table(d_lik$seed)
 
 d_comb = d_all %>%
   right_join(d_lik, by=c("seed", "training", "model")) %>%
-  drop_na() %>%
-  gather(corpus, delta_test_metric, 7:9)
+  drop_na()
+
+d_comb
 ```
 
 # Final data preprocessing
@@ -335,7 +341,8 @@ d_comb <- d_comb %>%
 
 ```{r By model}
 d_comb %>%
-  ggplot(aes(x=sg_score, y=delta_test_metric)) +
+  ggplot(aes(x=sg_score, y=delta_test_mean)) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(color=training, shape=model)) +
     ylab(metric) +
@@ -359,7 +366,7 @@ We control for effects of perplexity by relating the residuals of a `performance
 d_corp = d_comb %>%
   group_by(corpus) %>%
     # Compute residuals from an RT ~ PPL regression for each model--training--seed
-    mutate(resid.ppl = resid(lm(delta_test_metric ~ training:test_ppl))) %>%
+    mutate(resid.ppl = resid(lm(delta_test_mean ~ training:test_ppl))) %>%
   ungroup()
 # Now plot residual vs SG
 d_corp %>%
@@ -381,6 +388,9 @@ d_corp %>%
 
 
 ```{r Stepwise regression}
+
+# TODO predict this without collapsing across folds :)
+
 d_corp = d_comb %>%
   filter(corpus == "bnc-brown")
 lm1 = lm(delta_test_metric ~ training:test_ppl, data = d_corp)
@@ -393,9 +403,8 @@ summary(lm2)
 
 ```{r}
 d_comb %>%
-  #filter(corpus == "bnc-brown") %>%
-  #filter(model != "5gram") %>%
-  ggplot(aes(x=test_ppl, y=delta_test_metric, color=training)) +
+  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     #geom_smooth(method="lm", se=F) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model)) +
     ylab(metric) +
@@ -417,7 +426,8 @@ d_comb %>%
 ```{r On predictive power}
 d_comb %>%
   mutate(train_size = log(train_size)) %>%
-  ggplot(aes(x=train_size, y=delta_test_metric, color=model)) +
+  ggplot(aes(x=train_size, y=delta_test_mean, color=model)) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T, alpha=0.5) +
     geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
     ylab(metric) +
@@ -438,6 +448,7 @@ d_comb %>%
 d_comb %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=sg_score, color=model)) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T, alpha=0.5) +
     geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
     ylab("SG SCore") +
