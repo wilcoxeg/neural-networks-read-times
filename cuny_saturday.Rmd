@@ -227,9 +227,9 @@ model_fold_deltas = baseline_results %>%
 model_deltas = model_fold_deltas %>%
   group_by(model, training, seed, corpus) %>%
     summarise(mean_delta_log_lik = mean(delta_log_lik),
-             sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)),
-             mean_delta_mse = mean(delta_mse),
-             sem_delta_mse = sd(delta_mse) / sqrt(length(delta_mse)))
+              sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)),
+              mean_delta_mse = mean(delta_mse),
+              sem_delta_mse = sd(delta_mse) / sqrt(length(delta_mse)))
 
 ```
 
@@ -383,20 +383,41 @@ model_deltas %>%
 We control for effects of perplexity by relating the residuals of a `performance ~ PPL` regression to SG score.
 
 ```{r Residualized regression}
+
+# Prepare a residualized regression for x1 onto y, controlling for the effects of x2.
 d_resid = model_fold_deltas %>%
+  drop_na() %>%
+  
+  # Residualize delta metric w.r.t PPL for each model--training--seed--fold
   group_by(corpus) %>%
-    # Compute residuals from an RT ~ PPL regression for each model--training--seed--fold
-    mutate(resid.ppl = resid(lm(delta_test ~ training:test_ppl))) %>%
-  ungroup()
+    mutate(resid.delta = resid(lm(delta_test ~ training:test_ppl))) %>%
+  ungroup() %>%
+  
+  # Residualize SG score w.r.t. PPL for each training group
+  group_by(training) %>%
+    # NB no need for training:ppl interaction, since we're within-group.
+    mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
+  ungroup() %>%
+
+  # Compute summary statistics across model--training--seed--corpus.
+  group_by(model, training, corpus, seed) %>%
+    summarise(resid.delta.mean = mean(resid.delta),
+              resid.delta.sem = sd(resid.delta) / sqrt(length(resid.delta)),
+              resid.sg.mean = mean(resid.sg),
+              resid.sg.sem = sd(resid.sg) / sqrt(length(resid.sg)))
 
 # Now plot residual vs SG
-d_corp %>%
+d_resid %>%
   #filter(corpus != "bnc-brown") %>%
-  ggplot(aes(x=sg_score, y=resid.ppl)) +
+  ggplot(aes(x=resid.sg.mean, y=resid.delta.mean)) +
+    geom_errorbar(aes(xmin=resid.sg.mean - resid.sg.sem,
+                      xmax=resid.sg.mean + resid.sg.sem,
+                      ymin=resid.delta.mean - resid.delta.sem,
+                      ymax=resid.delta.mean + resid.delta.sem)) +
     geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model, color=training)) +
     ylab(paste("Residual", metric)) +
-    xlab("Syntax Generalization Score") +
+    xlab("Residual Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
     #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
     facet_grid(.~corpus, scales="free") +
@@ -410,13 +431,24 @@ d_corp %>%
 
 ```{r Stepwise regression}
 
-regression_data = model_fold_deltas %>%
-  filter(corpus == "bnc-brown")
-# NB we're incorporating variance across folds into this regression, good!
-lm1 = lm(delta_test ~ training:test_ppl, data = regression_data)
-lm2 = lm(delta_test ~ training:test_ppl + sg_score, data = regression_data)
-anova(lm1, lm2)
-summary(lm2)
+do_stepwise_regression = function(cur_corpus) {
+  regression_data = model_fold_deltas %>%
+    filter(corpus == cur_corpus)
+  
+  # NB we're incorporating variance across folds into this regression, good!
+  print("----------------------")
+  print(cur_corpus)
+  
+  lm1 = lm(delta_test ~ training:test_ppl, data = regression_data)
+  lm2 = lm(delta_test ~ training:test_ppl + sg_score, data = regression_data)
+  anova(lm1, lm2)
+  summary(lm2)
+}
+
+do_stepwise_regression("bnc-brown")
+do_stepwise_regression("dundee")
+do_stepwise_regression("natural-stories")
+
 ```
 
 ## Predictive power and perplexity
