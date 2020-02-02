@@ -441,7 +441,7 @@ do_stepwise_regression = function(cur_corpus) {
   
   lm1 = lm(delta_test ~ training:test_ppl, data = regression_data)
   lm2 = lm(delta_test ~ training:test_ppl + sg_score, data = regression_data)
-  anova(lm1, lm2)
+  print(anova(lm1, lm2))
   summary(lm2)
 }
 
