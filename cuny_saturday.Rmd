@@ -1,0 +1,476 @@
+---
+title: "CUNY 2020 Analysis"
+output: html_notebook
+---
+
+# Packages and utilities
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(plotrix)
+library(stringr)
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(Hmisc)
+library(mvtnorm)
+library(mgcv)
+```
+
+```{r}
+# Compute the log-likelihood of a new dataset using a fit lme4 model.
+logLik_test <- function(lm, test_X, test_y) {
+  predictions <- predict(lm, test_X, re.form=NA)
+  # Get std.dev. of residual, estimated from train data
+  stdev <- sigma(lm)
+  # For each prediction--observation, get the density p(obs | N(predicted, model_sigma)) and reduce
+  density <- sum(dnorm(test_y, predictions, stdev, log=TRUE))
+  return(density)
+}
+# Compute MSE of a new dataset using a fit lme4 model.
+mse_test <- function(lm, test_X, test_y) {
+  return(mean((predict(lm, test_X, re.form=NA) - test_y) ^ 2))
+}
+#Sanity checks
+#mylm <- gam(psychometric ~  s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"), data=train_data)
+#c(logLik(mylm), logLik_test(mylm, train_data, train_data$psychometric))
+#logLik_test(mylm, test_data, test_data$psychometric)
+```
+
+# Data loading and preprocessing
+
+```{r}
+lm_data = read.csv("coded_results_spr.csv") %>%
+  select(-X)
+```
+
+```{r}
+brown = lm_data %>%
+  filter(corpus == "bnc-brown")
+brown_spr = read.csv("./corpora/brown_spr.csv") %>%
+  group_by(code) %>%
+    summarise(psychometric = mean(time)) %>%
+  ungroup()
+brown = merge(brown, brown_spr, by="code") %>%
+  filter(surprisal > 0) %>%
+  mutate(seed = as.factor(seed))
+```
+
+```{r}
+brown1 = brown %>%
+  group_by(corpus, model, training, seed) %>%
+    arrange(code) %>%
+    mutate(prev_surp = lag(surprisal),
+           prev_index = lag(sent_pos),
+           prev_len = lag(len),
+           prev_freq = lag(freq)) %>%
+  ungroup() %>%
+  filter(sent_pos == prev_index + 1) %>%
+  select(-prev_index, -code)
+  
+```
+
+
+```{r}
+natural = lm_data %>%
+  filter(corpus == "natural-stories")
+natural_spr = read.csv("./corpora/natural_stories_rts.csv", sep="\t") %>%
+  mutate(code = paste(zone, item, sep = "_")) %>%
+  group_by(code) %>%
+    summarise(psychometric = mean(RT)) %>%
+  ungroup()
+natural = merge(natural, natural_spr, by="code") %>%
+  filter(surprisal > 0) %>%
+  mutate(seed = as.factor(seed))
+
+```
+
+
+```{r}
+natural1 = natural %>%
+  group_by(corpus, model, training, seed) %>%
+    separate(code, into=c("order", "zone")) %>%
+    mutate(order = as.numeric(order),
+         zone = as.numeric(zone)) %>%
+    arrange(zone, order) %>%
+    mutate(prev_surp = lag(surprisal),
+           prev_index = lag(order),
+           prev_len = lag(len),
+           prev_freq = lag(freq)) %>%
+  ungroup() %>%
+  filter(order == prev_index + 1) %>%
+  mutate(code = paste(order, zone, sep = "_")) %>%
+  select(-order, -zone, -prev_index, -code)
+  
+```
+
+
+```{r}
+
+all_data = rbind(brown1, natural1)
+
+dundee = read.csv("coded_results_dundee.csv") %>%
+  rename("sent_pos" = position) %>%
+  mutate(corpus = "dundee") %>%
+  select(-X, -text, -word2) %>%
+  mutate(seed = as.factor(seed))
+
+
+dundee1 = dundee %>%
+  mutate(prev_surp = lag(surprisal),
+         prev_index = lag(sent_pos),
+         prev_len = lag(len),
+         prev_freq = lag(freq)) %>%
+  filter(sent_pos == prev_index + 1) %>%
+  select(-prev_index) %>%
+  #gather("subject", "psychometric", 4:13) %>%
+  mutate(psychometric = rowMeans(select(.,4:13))) %>%
+  select(-"p1", -"p2", -"p3", -"p4", -"p5", -"p6", -"p7", -"p8", -"p9", -"p10") %>%
+  filter(psychometric > 0)
+
+
+all_data = rbind(all_data, dundee1) %>%
+  drop_na() %>%
+  filter(model != "ordered-neurons")
+
+```
+
+
+
+
+# Linear model training and evaluation
+
+```{r}
+
+# Randomly subsample data to produce train/test splits.
+#train_size <- floor(0.8 * nrow(all_data))
+#train_indices = sample(seq_len(nrow(all_data)), size=train_size)
+#train_data <- all_data[train_indices, ]
+#test_data <- all_data[-train_indices, ]
+# Compute linear model stats for the given training data subset and full test data.
+# Automatically subsets the test data to match the relevant group for which we are training a linear model.
+
+
+get_lm_data <- function(df, test_data, formula) {
+  this_lm <- gam(formula, data=df);
+  this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
+  summarise(df,
+            log_lik = as.numeric(logLik(this_lm, REML = F)),
+            test_lik = logLik_test(this_lm, this_test_data, this_test_data$psychometric),
+            test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
+}
+
+
+baseline_results = data.frame()
+full_model_results = data.frame()
+
+#Randomly shuffle the data
+all_data<-all_data[sample(nrow(all_data)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(all_data)),breaks=10,labels=FALSE)
+#Perform 10 fold cross validation
+for(i in 1:10) {
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  test_data <- all_data[testIndexes, ]
+  train_data <- all_data[-testIndexes, ]
+
+  # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
+  baselines = train_data %>%
+    group_by(model, training, seed, corpus) %>%
+      #do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+    ungroup() %>%
+    mutate(seed = as.factor(seed))
+  
+  baseline_results = rbind(baseline_results, baselines)
+  
+  # Compute a full linear model for each model--training--seed-RT-corpus combination
+  full_models = train_data %>%
+    group_by(model, training, seed, corpus) %>%
+      print(n()) %>%
+      #do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+    ungroup() %>%
+    mutate(seed = as.factor(seed))
+  
+  full_model_results = rbind(full_model_results, full_models)
+}
+
+```
+
+```{r}
+#write.csv(full_model_results, "full_model_results.csv")
+#write.csv(baseline_results, "baseline_results.csv")
+
+full_model_results = read.csv("full_model_results.csv")
+baseline_results = read.csv("baseline_results.csv")
+
+
+baselines = baseline_results %>%
+  group_by(model, training, seed, corpus) %>%
+    summarise(log_lik = mean(log_lik),
+              test_lik = mean(test_lik),
+              test_mse = mean(test_mse)) %>%
+  ungroup() %>%
+  mutate(seed=as.factor(seed))
+
+full_models = full_model_results %>%
+  group_by(model, training, seed, corpus) %>%
+    summarise(log_lik = mean(log_lik),
+              test_lik = mean(test_lik),
+              test_mse = mean(test_mse)) %>%
+  ungroup() %>%
+  mutate(seed=as.factor(seed))
+
+```
+
+
+
+```{r}
+
+all_data1 = all_data %>%
+  filter(freq<3) %>%
+  filter(model != "ordered-neurons")
+
+all_data1 = all_data1 %>%
+  group_by(training, model, seed, corpus) %>%
+    mutate(rows = n()) %>%
+  ungroup() %>%
+  filter(rows > 500)
+
+baselines = all_data1 %>%
+  group_by(training, model, seed, corpus) %>%
+    summarise(test_lik = logLik.gam(gam( psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+  ungroup() %>%
+  mutate(seed = as.factor(seed))
+baselines
+
+full_models = all_data1 %>%
+  group_by(model, training, seed, corpus) %>%
+      summarise(test_lik = logLik.gam(gam(psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+  ungroup() %>%
+  mutate(seed = as.factor(seed))
+
+
+```
+
+```{r}
+metric <- "ΔLogLik"
+#metric <- "-ΔMSE"
+d_lik = full_models %>%
+  right_join(baselines, suffix=c(".full", ".baseline"),
+             by=c("seed", "training", "model", "corpus")) %>%
+  mutate(delta_test_metric = test_lik.full - test_lik.baseline) %>%
+  #mutate(delta_test_metric = -(test_mse.full - test_mse.baseline)) %>%
+  # Remove the raw metrics and keep just the delta.
+  select(-log_lik.full, -test_lik.full, -test_mse.full,
+         -log_lik.baseline, -test_lik.baseline, -test_mse.baseline
+          ) %>%
+  #select(-test_lik.full, -test_lik.baseline) %>%
+  spread(corpus, delta_test_metric) %>%
+  drop_na()
+d_lik
+```
+
+```{r}
+# Sanity check: training on train+test data should yield improved performance over training on just training data. (When evaluating on test data.)
+# full_baselines = all_data %>%
+#   group_by(model, training, seed, corpus) %>%
+#   summarise(baseline_train_all_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)) %>%
+#   ungroup()
+# full_baselines
+# 
+# full_baselines %>%
+#   right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
+#   mutate(delta=baseline_train_all_test_lik-baseline_test_lik) %>%
+#   select(-baseline_lik) # %>%
+#   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
+```
+
+# Load model data (SyntaxGym, PPL)
+
+```{r}
+  
+d_all = read.csv("all_results_with_ppl_sg.csv") %>%
+  mutate(train_size = case_when(training == "bllip-lg" ~ 42,
+                                training == "bllip-md" ~ 15,
+                                training == "bllip-sm" ~ 5,
+                                training == "bllip-xs" ~ 1)) %>%
+  mutate(seed = as.factor(seed)) %>%
+  select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
+  distinct(model, training, seed, .keep_all = TRUE)
+
+d_comb = d_all %>%
+  right_join(d_lik, by=c("seed", "training", "model")) %>%
+  drop_na() %>%
+  gather(corpus, delta_test_metric, 7:9)
+```
+
+# Final data preprocessing
+
+```{r Filter models and/or corpora}
+# Exclude ordered-neurons from all analyses.
+d_all <- d_all %>%
+  filter(model != "ordered-neurons")
+d_comb <- d_comb %>%
+  filter(model != "ordered-neurons")
+d_comb = d_comb %>%
+  filter(corpus != "bnc-brown")
+```
+
+
+# Visualizations
+
+## Predictive power and SG
+
+
+```{r By model}
+d_comb %>%
+  ggplot(aes(x=sg_score, y=delta_test_metric)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(color=training, shape=model)) +
+    ylab(metric) +
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(~corpus, scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/sg_loglik.png",height=5,width=6)
+```
+
+### Regression analyses
+
+We control for effects of perplexity by relating the residuals of a `performance ~ PPL` regression to SG score.
+
+```{r Residualized regression}
+d_corp = d_comb %>%
+  group_by(corpus) %>%
+    # Compute residuals from an RT ~ PPL regression for each model--training--seed
+    mutate(resid.ppl = resid(lm(delta_test_metric ~ training:test_ppl))) %>%
+  ungroup()
+# Now plot residual vs SG
+d_corp %>%
+  #filter(corpus != "bnc-brown") %>%
+  ggplot(aes(x=sg_score, y=resid.ppl)) +
+    geom_smooth(method="lm", se=T) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model, color=training)) +
+    ylab(paste("Residual", metric)) +
+    xlab("Syntax Generalization Score") +
+    ggtitle("Syntactic Generalization vs. Predictive Power") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(.~corpus, scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "right")
+```
+
+
+```{r Stepwise regression}
+d_corp = d_comb %>%
+  filter(corpus == "bnc-brown")
+lm1 = lm(delta_test_metric ~ training:test_ppl, data = d_corp)
+lm2 = lm(delta_test_metric ~ training:test_ppl + sg_score, data = d_corp)
+anova(lm1, lm2)
+summary(lm2)
+```
+
+## Predictive power and perplexity
+
+```{r}
+d_comb %>%
+  #filter(corpus == "bnc-brown") %>%
+  #filter(model != "5gram") %>%
+  ggplot(aes(x=test_ppl, y=delta_test_metric, color=training)) +
+    geom_smooth(method="lm", se=F) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model)) +
+    ylab(metric) +
+    xlab("Test Perplexity") +
+    #coord_cartesian(ylim = c(1, 16)) +
+    ggtitle("Test Perplexity vs. Predictive Power") +
+    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    facet_grid(~corpus, scales="free") +
+    theme(axis.text=element_text(size=12),
+          strip.text.x = element_text(size=12),
+          legend.text=element_text(size=12),
+          axis.title=element_text(size=12),
+          legend.position = "right")
+#ggsave("./cogsci_images/ppl_loglik.png",height=5,width=6)
+```
+
+## Effect of training data size
+
+```{r On predictive power}
+d_comb %>%
+  mutate(train_size = log(train_size)) %>%
+  ggplot(aes(x=train_size, y=delta_test_metric, color=model)) +
+    geom_smooth(method="lm", se=T, alpha=0.5) +
+    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    ylab(metric) +
+    xlab("Log Million Training Tokens") +
+    ggtitle("Training Size vs. Predictive Power") +
+    facet_grid(corpus~model, scales="free") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/training_loglik.png",height=5,width=6)
+```
+
+
+```{r On SG score}
+d_comb %>%
+  mutate(train_size = log(train_size)) %>%
+  ggplot(aes(x=train_size, y=sg_score, color=model)) +
+    geom_smooth(method="lm", se=T, alpha=0.5) +
+    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    ylab("SG SCore") +
+    xlab("Log Million Training Tokens") +
+    ggtitle("Training Size vs. Syntactic Generalization") +
+    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    facet_grid(~model, scales="free") +
+    theme(axis.text=element_text(size=14),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/training_sg.png",height=5,width=6)
+```
+
+## Smith & Levy reproduction
+
+```{r}
+all_data %>%
+  filter(surprisal < 15, surprisal > 0) %>%
+  mutate(surp_fac = cut(surprisal, 15, labels = F)) %>%
+  group_by(model, corpus, training, surp_fac) %>%
+    summarise(m=mean(psychometric),
+              s=std.error(psychometric),
+              upper=m+1.96*s,
+              lower=m-1.96*s) %>%
+    ungroup() %>%
+  ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
+    stat_smooth(method="lm", se=T, alpha=0.5) +
+    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    ylab("Psychometric (ms)") +
+    xlab("Surprisal (bits)") +
+    ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
+    facet_grid(corpus~model, scales = "free") +
+    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    theme(axis.text=element_text(size=14),
+          axis.text.x = element_text(angle = 90, hjust = 1),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "bottom")
+#ggsave("./cogsci_images/surp_corr.png",height=5,width=12)
+```
