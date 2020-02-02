@@ -149,10 +149,10 @@ all_data = rbind(all_data, dundee1) %>%
 #train_indices = sample(seq_len(nrow(all_data)), size=train_size)
 #train_data <- all_data[train_indices, ]
 #test_data <- all_data[-train_indices, ]
+
+
 # Compute linear model stats for the given training data subset and full test data.
 # Automatically subsets the test data to match the relevant group for which we are training a linear model.
-
-
 get_lm_data <- function(df, test_data, formula) {
   this_lm <- gam(formula, data=df);
   this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
@@ -180,7 +180,7 @@ for(i in 1:10) {
   # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
   baselines = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      #do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+      do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed))
   
@@ -189,8 +189,7 @@ for(i in 1:10) {
   # Compute a full linear model for each model--training--seed-RT-corpus combination
   full_models = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      print(n()) %>%
-      #do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+      do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed))
   
@@ -200,8 +199,8 @@ for(i in 1:10) {
 ```
 
 ```{r}
-#write.csv(full_model_results, "full_model_results.csv")
-#write.csv(baseline_results, "baseline_results.csv")
+write.csv(full_model_results, "full_model_results.csv")
+write.csv(baseline_results, "baseline_results.csv")
 
 full_model_results = read.csv("full_model_results.csv")
 baseline_results = read.csv("baseline_results.csv")
@@ -229,28 +228,30 @@ full_models = full_model_results %>%
 
 ```{r}
 
-all_data1 = all_data %>%
-  filter(freq<3) %>%
-  filter(model != "ordered-neurons")
+# This is exploratory code from Ethan, 2020-02-01
 
-all_data1 = all_data1 %>%
-  group_by(training, model, seed, corpus) %>%
-    mutate(rows = n()) %>%
-  ungroup() %>%
-  filter(rows > 500)
-
-baselines = all_data1 %>%
-  group_by(training, model, seed, corpus) %>%
-    summarise(test_lik = logLik.gam(gam( psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
-  ungroup() %>%
-  mutate(seed = as.factor(seed))
-baselines
-
-full_models = all_data1 %>%
-  group_by(model, training, seed, corpus) %>%
-      summarise(test_lik = logLik.gam(gam(psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
-  ungroup() %>%
-  mutate(seed = as.factor(seed))
+# all_data1 = all_data %>%
+#   filter(freq<3) %>%
+#   filter(model != "ordered-neurons")
+# 
+# all_data1 = all_data1 %>%
+#   group_by(training, model, seed, corpus) %>%
+#     mutate(rows = n()) %>%
+#   ungroup() %>%
+#   filter(rows > 500)
+# 
+# baselines = all_data1 %>%
+#   group_by(training, model, seed, corpus) %>%
+#     summarise(test_lik = logLik.gam(gam( psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+#   ungroup() %>%
+#   mutate(seed = as.factor(seed))
+# baselines
+# 
+# full_models = all_data1 %>%
+#   group_by(model, training, seed, corpus) %>%
+#       summarise(test_lik = logLik.gam(gam(psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+#   ungroup() %>%
+#   mutate(seed = as.factor(seed))
 
 
 ```
@@ -258,11 +259,15 @@ full_models = all_data1 %>%
 ```{r}
 metric <- "ΔLogLik"
 #metric <- "-ΔMSE"
+
 d_lik = full_models %>%
   right_join(baselines, suffix=c(".full", ".baseline"),
              by=c("seed", "training", "model", "corpus")) %>%
+  
+  # Compute delta(some metric). (Choose likelihood vs. MSE here.)
   mutate(delta_test_metric = test_lik.full - test_lik.baseline) %>%
   #mutate(delta_test_metric = -(test_mse.full - test_mse.baseline)) %>%
+  
   # Remove the raw metrics and keep just the delta.
   select(-log_lik.full, -test_lik.full, -test_mse.full,
          -log_lik.baseline, -test_lik.baseline, -test_mse.baseline
@@ -270,6 +275,7 @@ d_lik = full_models %>%
   #select(-test_lik.full, -test_lik.baseline) %>%
   spread(corpus, delta_test_metric) %>%
   drop_na()
+
 d_lik
 ```
 
@@ -288,7 +294,7 @@ d_lik
 #   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
 ```
 
-# Load model data (SyntaxGym, PPL)
+# Load language model data (SyntaxGym, PPL)
 
 ```{r}
   
@@ -300,6 +306,10 @@ d_all = read.csv("all_results_with_ppl_sg.csv") %>%
   mutate(seed = as.factor(seed)) %>%
   select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
   distinct(model, training, seed, .keep_all = TRUE)
+
+# TODO: Why are the seeds and models not the same in the two data frames?
+table(d_all$seed)
+table(d_lik$seed)
 
 d_comb = d_all %>%
   right_join(d_lik, by=c("seed", "training", "model")) %>%
@@ -315,8 +325,6 @@ d_all <- d_all %>%
   filter(model != "ordered-neurons")
 d_comb <- d_comb %>%
   filter(model != "ordered-neurons")
-d_comb = d_comb %>%
-  filter(corpus != "bnc-brown")
 ```
 
 
@@ -388,7 +396,7 @@ d_comb %>%
   #filter(corpus == "bnc-brown") %>%
   #filter(model != "5gram") %>%
   ggplot(aes(x=test_ppl, y=delta_test_metric, color=training)) +
-    geom_smooth(method="lm", se=F) +
+    #geom_smooth(method="lm", se=F) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model)) +
     ylab(metric) +
     xlab("Test Perplexity") +
