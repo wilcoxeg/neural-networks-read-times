@@ -321,7 +321,7 @@ language_model_data = read.csv("all_results_with_ppl_sg.csv") %>%
 # TODO: Why are the seeds and models not the same in the two data frames?
 # I think we have some 5gram seeds with an extra "1" in the factor name. This is borking things.
 # TODO check with jenn/ethan about this
-table(d_all$seed)
+table(language_model_data$seed)
 table(model_deltas$seed)
 ```
 
