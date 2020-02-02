@@ -209,7 +209,7 @@ full_model_results = read.csv("full_model_results.csv")
 baseline_results = read.csv("baseline_results.csv")
 
 # Join baseline models with full models and compare performance within-fold.
-model_deltas = baseline_results %>%
+model_fold_deltas = baseline_results %>%
   right_join(full_model_results, suffix=c(".baseline", ".full"),
              by=c("model", "training", "seed", "corpus", "fold")) %>%
   
@@ -221,9 +221,10 @@ model_deltas = baseline_results %>%
            delta_mse = test_mse.full - test_mse.baseline) %>%
   ungroup() %>%
   select(model, training, seed, corpus, fold,
-         delta_log_lik, delta_mse) %>%
-  
-  # Now compute across-fold delta statistics for each model--training--seed--corpus.
+         delta_log_lik, delta_mse)
+
+# Now compute across-fold delta statistics for each model--training--seed--corpus.
+model_deltas = model_fold_deltas %>%
   group_by(model, training, seed, corpus) %>%
     summarise(mean_delta_log_lik = mean(delta_log_lik),
              sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)),
@@ -268,18 +269,25 @@ model_deltas = baseline_results %>%
 metric <- "ΔLogLik"
 #metric <- "-ΔMSE"
 
-d_lik = model_deltas %>%
+# Select the relevant metric.
+model_fold_deltas = model_fold_deltas %>%
   # Retrieve the current test metric
-  mutate(delta_test_mean = mean_delta_log_lik,
-         delta_test_sem = sem_delta_log_lik) %>%
-  # mutate(delta_test_mean = mean_delta_mse,
-  #        delta_test_sem = sem_delta_mse)
-  
-  # Remove the raw metrics.
-  select(-mean_delta_log_lik, -sem_delta_log_lik,
-         -mean_delta_mse, -sem_delta_mse)
+  mutate(delta_test = delta_log_lik) %>%
+  select(-delta_log_lik, -delta_mse)
 
-d_lik
+# Select the relevant metric.
+model_deltas = model_deltas %>%
+    # Retrieve the current test metric
+    mutate(delta_test_mean = mean_delta_log_lik,
+           delta_test_sem = sem_delta_log_lik) %>%
+    # mutate(delta_test_mean = mean_delta_mse,
+    #        delta_test_sem = sem_delta_mse)
+    
+    # Remove the raw metrics.
+    select(-mean_delta_log_lik, -sem_delta_log_lik,
+           -mean_delta_mse, -sem_delta_mse)
+
+model_deltas
 ```
 
 ```{r}
@@ -300,8 +308,8 @@ d_lik
 # Load language model data (SyntaxGym, PPL)
 
 ```{r}
-  
-d_all = read.csv("all_results_with_ppl_sg.csv") %>%
+
+language_model_data = read.csv("all_results_with_ppl_sg.csv") %>%
   mutate(train_size = case_when(training == "bllip-lg" ~ 42,
                                 training == "bllip-md" ~ 15,
                                 training == "bllip-sm" ~ 5,
@@ -314,22 +322,34 @@ d_all = read.csv("all_results_with_ppl_sg.csv") %>%
 # I think we have some 5gram seeds with an extra "1" in the factor name. This is borking things.
 # TODO check with jenn/ethan about this
 table(d_all$seed)
-table(d_lik$seed)
+table(model_deltas$seed)
+```
 
-d_comb = d_all %>%
-  right_join(d_lik, by=c("seed", "training", "model")) %>%
+First join delta-metric data with model auxiliary data.
+
+```{r}
+model_deltas = model_deltas %>%
+  right_join(language_model_data, by=c("seed", "training", "model")) %>%
   drop_na()
 
-d_comb
+model_deltas
+```
+
+Also join on the original linear model data, rather than collapsing to delta-metrics.
+This will support regressions later on that don't collapse across folds.
+
+```{r}
+model_fold_deltas = model_fold_deltas %>%
+  full_join(language_model_data, by=c("seed", "training", "model"))
 ```
 
 # Final data preprocessing
 
 ```{r Filter models and/or corpora}
 # Exclude ordered-neurons from all analyses.
-d_all <- d_all %>%
+model_deltas <- model_deltas %>%
   filter(model != "ordered-neurons")
-d_comb <- d_comb %>%
+model_fold_deltas <- model_fold_deltas %>%
   filter(model != "ordered-neurons")
 ```
 
@@ -340,7 +360,7 @@ d_comb <- d_comb %>%
 
 
 ```{r By model}
-d_comb %>%
+model_deltas %>%
   ggplot(aes(x=sg_score, y=delta_test_mean)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T) +
@@ -363,11 +383,12 @@ d_comb %>%
 We control for effects of perplexity by relating the residuals of a `performance ~ PPL` regression to SG score.
 
 ```{r Residualized regression}
-d_corp = d_comb %>%
+d_resid = model_fold_deltas %>%
   group_by(corpus) %>%
-    # Compute residuals from an RT ~ PPL regression for each model--training--seed
-    mutate(resid.ppl = resid(lm(delta_test_mean ~ training:test_ppl))) %>%
+    # Compute residuals from an RT ~ PPL regression for each model--training--seed--fold
+    mutate(resid.ppl = resid(lm(delta_test ~ training:test_ppl))) %>%
   ungroup()
+
 # Now plot residual vs SG
 d_corp %>%
   #filter(corpus != "bnc-brown") %>%
@@ -389,12 +410,11 @@ d_corp %>%
 
 ```{r Stepwise regression}
 
-# TODO predict this without collapsing across folds :)
-
-d_corp = d_comb %>%
+regression_data = model_fold_deltas %>%
   filter(corpus == "bnc-brown")
-lm1 = lm(delta_test_metric ~ training:test_ppl, data = d_corp)
-lm2 = lm(delta_test_metric ~ training:test_ppl + sg_score, data = d_corp)
+# NB we're incorporating variance across folds into this regression, good!
+lm1 = lm(delta_test ~ training:test_ppl, data = regression_data)
+lm2 = lm(delta_test ~ training:test_ppl + sg_score, data = regression_data)
 anova(lm1, lm2)
 summary(lm2)
 ```
@@ -402,7 +422,7 @@ summary(lm2)
 ## Predictive power and perplexity
 
 ```{r}
-d_comb %>%
+model_deltas %>%
   ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     #geom_smooth(method="lm", se=F) +
@@ -424,7 +444,7 @@ d_comb %>%
 ## Effect of training data size
 
 ```{r On predictive power}
-d_comb %>%
+model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=delta_test_mean, color=model)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
@@ -445,10 +465,9 @@ d_comb %>%
 
 
 ```{r On SG score}
-d_comb %>%
+model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=sg_score, color=model)) +
-    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T, alpha=0.5) +
     geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
     ylab("SG SCore") +
