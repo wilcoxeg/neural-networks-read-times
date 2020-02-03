@@ -74,9 +74,13 @@ brown1 = brown %>%
     mutate(prev_surp = lag(surprisal),
            prev_index = lag(sent_pos),
            prev_len = lag(len),
-           prev_freq = lag(freq)) %>%
+           prev_freq = lag(freq),
+           prev2_surp = lag(prev_surp),
+           prev2_index = lag(prev_index),
+           prev2_len = lag(prev_len),
+           prev2_freq = lag(prev_freq)) %>%
   ungroup() %>%
-  filter(sent_pos == prev_index + 1) %>%
+  filter(sent_pos == prev_index + 1 & sent_pos == prev2_index + 2) %>%
   select(-prev_index, -code)
   
 ```
@@ -107,9 +111,13 @@ natural1 = natural %>%
     mutate(prev_surp = lag(surprisal),
            prev_index = lag(order),
            prev_len = lag(len),
-           prev_freq = lag(freq)) %>%
+           prev_freq = lag(freq),
+           prev2_surp = lag(prev_surp),
+           prev2_index = lag(prev_index),
+           prev2_len = lag(prev_len),
+           prev2_freq = lag(prev_freq)) %>%
   ungroup() %>%
-  filter(order == prev_index + 1) %>%
+  filter(order == prev_index + 1 & order == prev2_index + 2) %>%
   mutate(code = paste(order, zone, sep = "_")) %>%
   select(-order, -zone, -prev_index, -code)
   
@@ -131,7 +139,11 @@ dundee1 = dundee %>%
   mutate(prev_surp = lag(surprisal),
          prev_index = lag(sent_pos),
          prev_len = lag(len),
-         prev_freq = lag(freq)) %>%
+         prev_freq = lag(freq),
+           prev2_surp = lag(prev_surp),
+           prev2_index = lag(prev_index),
+           prev2_len = lag(prev_len),
+           prev2_freq = lag(prev_freq)) %>%
   filter(sent_pos == prev_index + 1) %>%
   select(-prev_index) %>%
   #gather("subject", "psychometric", 4:13) %>%
@@ -190,9 +202,27 @@ full_residuals = data.frame()
 #Randomly shuffle the data
 all_data<-all_data[sample(nrow(all_data)),]
 #Create K equally size folds
-K = 10
+K = 5
 folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 #Perform 10 fold cross validation
+
+baseline_corpus = function(corpus, df, test_data, env) {
+  if(corpus == "dundee") {
+    get_lm_data(df, test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"), env)
+  } else {
+    get_lm_data(df, test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"), env)
+  }
+}
+
+full_model_corpus = function(corpus, df, test_data, env) {
+  if(corpus[1] == "dundee") {
+    get_lm_data(df, test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"), env)
+  } else {
+    get_lm_data(df, test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"), env)
+  }
+}
+
+
 for(i in 1:K) { 
   #Segement your data by fold using the which() function 
   testIndexes <- which(folds==i,arr.ind=TRUE)
@@ -202,23 +232,27 @@ for(i in 1:K) {
   # Prepare a new Environment in which we store fitted LMs, which we'll query later for residuals.
   baseline_env = environment()
   full_env = environment()
+  
 
   # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
   baselines = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
-                     baseline_env)) %>%
+      #do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
+                     #baseline_env)) %>%
+      do(baseline_corpus(unique(.$corpus), ., test_data, baseline_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
   
   baseline_results = rbind(baseline_results, baselines)
   
+  
   # Compute a full linear model for each model--training--seed-RT-corpus combination
   full_models = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
-                     full_env)) %>%
+      #do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
+                     #full_env)) %>%
+      do(full_model_corpus(unique(.$corpus), ., test_data, full_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
@@ -243,16 +277,16 @@ for(i in 1:K) {
 ```
 
 ```{r}
-write.csv(full_residuals, "full_residuals.csv")
-write.csv(baseline_residuals, "baseline_residuals.csv")
+write.csv(full_residuals, "full_residuals_2b.csv")
+write.csv(baseline_residuals, "baseline_residuals_2b.csv")
 ```
 
 ```{r}
-write.csv(full_model_results, "full_model_results.csv")
-write.csv(baseline_results, "baseline_results.csv")
+write.csv(full_model_results, "full_model_results_2b.csv")
+write.csv(baseline_results, "baseline_results_2b.csv")
 
-full_model_results = read.csv("full_model_results.csv")
-baseline_results = read.csv("baseline_results.csv")
+full_model_results = read.csv("full_model_results_2b.csv")
+baseline_results = read.csv("baseline_results_2b.csv")
 
 # Join baseline models with full models and compare performance within-fold.
 model_fold_deltas = baseline_results %>%
@@ -285,28 +319,32 @@ model_deltas = model_fold_deltas %>%
 
 # This is exploratory code from Ethan, 2020-02-01
 
-# all_data1 = all_data %>%
-#   filter(freq<3) %>%
-#   filter(model != "ordered-neurons")
-# 
-# all_data1 = all_data1 %>%
-#   group_by(training, model, seed, corpus) %>%
-#     mutate(rows = n()) %>%
-#   ungroup() %>%
-#   filter(rows > 500)
-# 
-# baselines = all_data1 %>%
-#   group_by(training, model, seed, corpus) %>%
-#     summarise(test_lik = logLik.gam(gam( psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
-#   ungroup() %>%
-#   mutate(seed = as.factor(seed))
-# baselines
-# 
-# full_models = all_data1 %>%
-#   group_by(model, training, seed, corpus) %>%
-#       summarise(test_lik = logLik.gam(gam(psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
-#   ungroup() %>%
-#   mutate(seed = as.factor(seed))
+
+all_data_psycho = all_data %>%
+  filter(model != "ordered-neurons") %>%
+  group_by(word, corpus, model, training, seed) %>%
+    mutate(s = std.error(psychometric),
+           m = mean(psychometric)) %>%
+  ungroup() %>%
+  filter(psychometric > m + (2 * s)) %>%
+  #filter(len < 4) %>%
+  group_by(training, model, seed, corpus) %>%
+     mutate(rows = n()) %>%
+   ungroup() %>%
+   filter(rows > 500)
+ 
+ baselines = all_data_psycho %>%
+   group_by(training, model, seed, corpus) %>%
+     summarise(test_lik = logLik.gam(gam( psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+   ungroup() %>%
+   mutate(seed = as.factor(seed))
+  baselines
+ 
+ full_models = all_data_psycho %>%
+   group_by(model, training, seed, corpus) %>%
+       summarise(test_lik = logLik.gam(gam(psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")))) %>%
+   ungroup() %>%
+   mutate(seed = as.factor(seed))
 
 
 ```
@@ -459,19 +497,21 @@ d_resid %>%
     geom_errorbar(aes(xmin=resid.sg.mean - resid.sg.sem,
                       xmax=resid.sg.mean + resid.sg.sem,
                       ymin=resid.delta.mean - resid.delta.sem,
-                      ymax=resid.delta.mean + resid.delta.sem)) +
+                      ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
     geom_smooth(method="lm", se=T) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model, color=training)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training)) +
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
-    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
     facet_grid(.~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
+#ggsave("./cogsci_images/ppl_sg.png",height=4.5,width=11)
+
 ```
 
 
@@ -502,9 +542,9 @@ do_stepwise_regression("natural-stories")
 ```{r}
 model_deltas %>%
   ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
-    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=model)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model)) +
     ylab(metric) +
     xlab("Test Perplexity") +
     #coord_cartesian(ylim = c(1, 16)) +
@@ -516,8 +556,19 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-#ggsave("./cogsci_images/ppl_loglik.png",height=5,width=6)
+#ggsave("./cogsci_images/ppl_loglik.png",height=4.5,width=11)
 ```
+
+```{r}
+model_deltas %>%
+  filter(model != "5gram", training != "bllip-lg") %>%
+  group_by(training, corpus) %>%
+    #summarise(n = n())
+    summarise(corr = as.numeric(cor.test(delta_test_mean, test_ppl)[4]),
+              pval = as.numeric(cor.test(delta_test_mean, test_ppl)[3]))
+
+```
+
 
 ## Effect of training data size
 
@@ -564,7 +615,7 @@ model_deltas %>%
 ## Smith & Levy reproduction
 
 ```{r}
-all_data %>%
+surp_fac = all_data %>%
   filter(surprisal < 15, surprisal > 0) %>%
   mutate(surp_fac = cut(surprisal, 15, labels = F)) %>%
   group_by(model, corpus, training, surp_fac) %>%
@@ -572,21 +623,55 @@ all_data %>%
               s=std.error(psychometric),
               upper=m+1.96*s,
               lower=m-1.96*s) %>%
-    ungroup() %>%
+    ungroup()
+
+surp_fac %>%
   ggplot(aes(x=surp_fac, y=m, ymin=lower, ymax=upper, color=training)) +
     stat_smooth(method="lm", se=T, alpha=0.5) +
     geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Psychometric (ms)") +
+    ylab("Processing Time (ms)") +
     xlab("Surprisal (bits)") +
     ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
     facet_grid(corpus~model, scales = "free") +
     scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
     theme(axis.text=element_text(size=14),
-          axis.text.x = element_text(angle = 90, hjust = 1),
+          axis.text.y = element_text(size = 10),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
-          legend.position = "bottom")
-#ggsave("./cogsci_images/surp_corr.png",height=5,width=12)
+          legend.position = "right")
+ggsave("./cogsci_images/surp_corr.png",height=4.5,width=11)
 ```
+
+```{r}
+
+surp_scores = surp_fac %>%
+  group_by(model, corpus, training) %>%
+    summarise(corr = as.numeric(cor.test(m, surp_fac)[4]),
+              pval = as.numeric(cor.test(m, surp_fac)[3]))
+    #mutate(corr = cor.test(m, surp_fac, data = .))
+
+surp_scores %>%
+  group_by(corpus) %>%
+    summarise(m = mean(corr),
+              s = std.error(corr),
+              upper=m+1.96*s,
+              lower=m-1.96*s) %>%
+  ungroup() %>%
+  ggplot(aes(x=corpus, y=m, ymin=lower, ymax=upper, color=corpus)) +
+    geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    theme(axis.text=element_text(size=14),
+          axis.text.y = element_text(size = 10),
+          strip.text.x = element_text(size=14),
+          legend.text=element_text(size=14),
+          axis.title=element_text(size=18),
+          legend.position = "right")
+
+m = lmer(corr ~ corpus + (1|training) + (1|model), data = surp_scores)
+summary(m)
+
+```
+
+
