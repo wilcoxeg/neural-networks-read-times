@@ -29,6 +29,15 @@ logLik_test <- function(lm, test_X, test_y) {
   density <- sum(dnorm(test_y, predictions, stdev, log=TRUE))
   return(density)
 }
+# Get per-prediction log-likelihood
+logLik_test_per <- function(lm, test_X, test_y) {
+  predictions <- predict(lm, test_X, re.form=NA)
+  # Get std.dev. of residual, estimated from train data
+  stdev <- sigma(lm)
+  # For each prediction--observation, get the density p(obs | N(predicted, model_sigma))
+  densities <- dnorm(test_y, predictions, stdev, log=TRUE)
+  return(densities)
+}
 # Compute MSE of a new dataset using a fit lme4 model.
 mse_test <- function(lm, test_X, test_y) {
   return(mean((predict(lm, test_X, re.form=NA) - test_y) ^ 2))
@@ -144,27 +153,39 @@ all_data = rbind(all_data, dundee1) %>%
 
 ```{r}
 
-# Randomly subsample data to produce train/test splits.
-#train_size <- floor(0.8 * nrow(all_data))
-#train_indices = sample(seq_len(nrow(all_data)), size=train_size)
-#train_data <- all_data[train_indices, ]
-#test_data <- all_data[-train_indices, ]
-
-
 # Compute linear model stats for the given training data subset and full test data.
 # Automatically subsets the test data to match the relevant group for which we are training a linear model.
-get_lm_data <- function(df, test_data, formula) {
+get_lm_data <- function(df, test_data, formula, store_env) {
   this_lm <- gam(formula, data=df);
   this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
+  
+  # Save lm to the global env so that we can access residuals later.
+  lm_name = unique(paste(df$model, df$training, df$seed, df$corpus))[1]
+  assign(lm_name, this_lm, envir=store_env)
+  
   summarise(df,
             log_lik = as.numeric(logLik(this_lm, REML = F)),
             test_lik = logLik_test(this_lm, this_test_data, this_test_data$psychometric),
             test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
 }
 
+# For a previously fitted lm stored in store_env, get the residuals on test data of the relevant data subset.
+get_lm_residuals <- function(df, store_env) {
+  # Retrieve the relevant lm.
+  lm_name = unique(paste(df$model, df$training, df$seed, df$corpus))[1]
+  this_lm <- get(lm_name, envir=store_env)
+  
+  mutate(df,
+         likelihood = logLik_test_per(this_lm, df, df$psychometric),
+         resid = df$psychometric - predict(this_lm, df, re.form=NA))
+}
+
 
 baseline_results = data.frame()
 full_model_results = data.frame()
+
+baseline_residuals = data.frame()
+full_residuals = data.frame()
 
 #Randomly shuffle the data
 all_data<-all_data[sample(nrow(all_data)),]
@@ -172,16 +193,21 @@ all_data<-all_data[sample(nrow(all_data)),]
 K = 10
 folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 #Perform 10 fold cross validation
-for(i in 1:K) {
+for(i in 1:K) { 
   #Segement your data by fold using the which() function 
   testIndexes <- which(folds==i,arr.ind=TRUE)
   test_data <- all_data[testIndexes, ]
   train_data <- all_data[-testIndexes, ]
+  
+  # Prepare a new Environment in which we store fitted LMs, which we'll query later for residuals.
+  baseline_env = environment()
+  full_env = environment()
 
   # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
   baselines = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+      do(get_lm_data(., test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
+                     baseline_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
@@ -191,14 +217,34 @@ for(i in 1:K) {
   # Compute a full linear model for each model--training--seed-RT-corpus combination
   full_models = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))) %>%
+      do(get_lm_data(., test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"),
+                     full_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
   
   full_model_results = rbind(full_model_results, full_models)
+  
+  fold_baseline_residuals = test_data %>%
+    group_by(model, training, seed, corpus) %>%
+      do(get_lm_residuals(., baseline_env)) %>%
+    ungroup()
+  
+  baseline_residuals = rbind(baseline_residuals, fold_baseline_residuals)
+  
+  fold_full_residuals = test_data %>%
+    group_by(model, training, seed, corpus) %>%
+      do(get_lm_residuals(., full_env)) %>%
+    ungroup() 
+  
+  full_residuals = rbind(full_residuals, fold_full_residuals)
 }
 
+```
+
+```{r}
+write.csv(full_residuals, "full_residuals.csv")
+write.csv(baseline_residuals, "baseline_residuals.csv")
 ```
 
 ```{r}
