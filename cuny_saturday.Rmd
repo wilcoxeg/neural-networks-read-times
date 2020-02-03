@@ -193,6 +193,21 @@ get_lm_residuals <- function(df, store_env) {
 }
 
 
+#####
+# Define regression formulae.
+# Eye-tracking regression: only use surprisal and previous surprisal; SPRT regression: use 2-back features.
+
+baseline_rt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")
+baselie_sprt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
+
+full_rt_regression = (psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20)
+                      + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))
+full_sprt_regression = (psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20)
+                        + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"))
+  
+#####
+# Prepare frames/environments for storing results/objects.
+
 baseline_results = data.frame()
 full_model_results = data.frame()
 
@@ -208,17 +223,17 @@ folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 
 baseline_corpus = function(corpus, df, test_data, env) {
   if(corpus == "dundee") {
-    get_lm_data(df, test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"), env)
+    get_lm_data(df, test_data, baseline_rt_regression, env)
   } else {
-    get_lm_data(df, test_data, psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"), env)
+    get_lm_data(df, test_data, baseline_sprt_regression, env)
   }
 }
 
 full_model_corpus = function(corpus, df, test_data, env) {
   if(corpus[1] == "dundee") {
-    get_lm_data(df, test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"), env)
+    get_lm_data(df, test_data, full_rt_regression, env)
   } else {
-    get_lm_data(df, test_data, psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"), env)
+    get_lm_data(df, test_data, full_sprt_regression, env)
   }
 }
 
