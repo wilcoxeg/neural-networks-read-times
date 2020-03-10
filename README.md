@@ -34,13 +34,25 @@ Main analysis script
 
 • All codes are ordered, so the word with code 010012 immedietly proceeds 010013 in the reading-time corpus.
 
+### generate_sentences.py
+
+• generates line-separated natural text randitions of the `bnc-brown` and `natural-stories` corpus, which can be fed into a neural LM to get by-word surprisal values.
+
+• To generate bnc-brown, the script takes `brown_spr.csv` which should be in the same folder.
+
+• To generate natural-stories, the script takes the `all_stories.txt` (or `all_stories.tok`) file from the `natural_stories/naturalstories_RTS` subdirectory of the natural stories corpus, which can be found [here on github](https://github.com/languageMIT/naturalstories/tree/master/naturalstories_RTS)
+
 ## Data
 
-• Download the data-directory here: https://drive.google.com/file/d/1Gaj9xdkWh8e8aiMuZeE1U3WA_kkbwAUq/view?usp=sharing
+• Download the data-directory here: https://drive.google.com/file/d/1cbZafbtfTxmECvhuFA-ZHTakdegGXjrq
 
 • For scripts to work, but it at the top level of this directory
 
 ### Corpora
+
+• `brown_spr.csv` and `natural_stories_rts.csv` have by-word reading times for the bnc-brown and natural stories corpus. These are not averaged across subjects. Cross-subject averaging happens in the `average_sprs_script.rmd` file.
+
+• `bnc-brown.txt` and `natural_stories.txt` are sentence-tokenized versions of these corpora, which can be fed into neural LMs to get word-by-word surprisal values.
 
 ### Human RTs
 
