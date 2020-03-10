@@ -1,9 +1,5 @@
-.ipynb_checkpoints
 .ipython
 .jupyter
-.local
-dundee*
 *.csv
-surprisal
-corpora
+/data/
 .DS_Store
