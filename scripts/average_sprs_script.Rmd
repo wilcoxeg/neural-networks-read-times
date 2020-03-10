@@ -1,0 +1,31 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# Read in human self-paced reading and eye-tracking data, get by-word (across subjects) averages, and save
+# For natural stories, create a code for each token
+
+brown_spr = read.csv("../data/corpora/brown_spr.csv") %>%
+  group_by(code, word) %>%
+    summarise(psychometric = mean(time)) %>%
+  ungroup() %>%
+write.table(brown_spr, "../data/human_rts/bnc-brown.txt", sep="\t", row.names = F)
+
+natural_spr = read.csv("../data/corpora/natural_stories_rts.csv", sep="\t") %>%
+  mutate(code = (item*10000) + zone) %>%
+  group_by(code, word) %>%
+    summarise(psychometric = mean(RT)) %>%
+  ungroup()
+write.table(natural_spr, "../data/human_rts/natural-stories.txt", sep="\t", row.names = F)
+
+
+
+```
