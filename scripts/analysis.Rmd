@@ -272,7 +272,7 @@ model_deltas
 # Load language model data (SyntaxGym, PPL)
 
 ```{r}
-language_model_data = read.csv("./data/model_metadata.csv") %>%
+language_model_data = read.csv("../data/model_metadata.csv") %>%
   mutate(train_size = case_when(training == "bllip-lg" ~ 42,
                                 training == "bllip-md" ~ 15,
                                 training == "bllip-sm" ~ 5,
