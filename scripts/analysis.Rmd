@@ -76,6 +76,12 @@ all_data = data %>%
   filter((corpus == "dundee" & code == prev2_code + 2) | (corpus != "dundee" & code == prev_code + 1)) %>%
   select(-prev_code, -prev2_code, -prev3_code) %>%
   drop_na()
+
+all_data = all_data %>%
+  mutate(
+    model = as.character(model),
+    model = if_else(model == "gpt-2", "gpt2", model),
+    model = as.factor(model))
   
 ```
 
@@ -272,13 +278,17 @@ model_deltas
 # Load language model data (SyntaxGym, PPL)
 
 ```{r}
-language_model_data = read.csv("../data/model_metadata.csv") %>%
+language_model_data = read.csv("../data/full_ppl.csv") %>%
+  mutate(model = as.character(model),
+         model = if_else(model == "gpt-2", "gpt2", model),
+         model = as.factor(model)) %>%
   mutate(train_size = case_when(training == "bllip-lg" ~ 42,
                                 training == "bllip-md" ~ 15,
                                 training == "bllip-sm" ~ 5,
                                 training == "bllip-xs" ~ 1)) %>%
   mutate(seed = as.factor(seed)) %>%
-  select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
+  select(-pid, -test_loss) %>%
+  #select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
   distinct(model, training, seed, .keep_all = TRUE)
 # TODO: Why are the seeds and models not the same in the two data frames?
 # I think we have some 5gram seeds with an extra "1" in the factor name. This is borking things.
@@ -291,7 +301,8 @@ First join delta-metric data with model auxiliary data.
 
 ```{r}
 model_deltas = model_deltas %>%
-  right_join(language_model_data, by=c("seed", "training", "model")) %>%
+  merge(language_model_data, by = c("seed", "training", "model"), all=T) %>%
+  #right_join(language_model_data, by=c("seed", "training", "model")) %>%
   drop_na()
 model_deltas
 ```
