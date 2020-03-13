@@ -45,8 +45,9 @@ Main analysis script
 ## Data
 
 • Download the data-directory here: https://drive.google.com/file/d/1cbZafbtfTxmECvhuFA-ZHTakdegGXjrq
+• The data can also be found on `/om2/user/ethanwil/rnn_spr` (this one should be the most up-to-date)
 
-• For scripts to work, but it at the top level of this directory
+• For scripts to work, put the `data` directory at the top level of this directory.
 
 ### Corpora
 
