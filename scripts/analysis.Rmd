@@ -13,8 +13,6 @@ library(plotrix)
 library(stringr)
 library(readxl)
 library(RColorBrewer)
-library(viridis)
-library(Hmisc)
 library(mvtnorm)
 library(mgcv)
 ```
@@ -411,7 +409,7 @@ do_stepwise_regression = function(cur_corpus) {
   print(anova(lm1, lm2))
   summary(lm2)
 }
-#do_stepwise_regression("bnc-brown")
+do_stepwise_regression("bnc-brown")
 do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
