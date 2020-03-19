@@ -204,15 +204,15 @@ for(i in 1:K) {
 ```
 
 ```{r}
-#write.csv(full_residuals, "../data/full_residuals.csv")
-#write.csv(baseline_residuals, "../data/baseline_residuals.csv")
+#write.csv(full_residuals, "../data/analysis_checkpoints/ffull_residuals.csv")
+#write.csv(baseline_residuals, "../data/analysis_checkpoints/fbaseline_residuals.csv")
 ```
 
 ```{r}
-#write.csv(full_model_results, "../data/full_model_result.csv")
-#write.csv(baseline_results, "../data/baseline_results.csv")
-#full_model_results = read.csv("../data/full_model_results.csv")
-#baseline_results = read.csv("../data/baseline_resultsb.csv")
+write.csv(full_model_results, "../data/analysis_checkpoints/full_model_result.csv")
+write.csv(baseline_results, "../data/analysis_checkpoints/fbaseline_results.csv")
+#full_model_results = read.csv("../data/analysis_checkpoints/ffull_model_results.csv")
+#baseline_results = read.csv("../data/analysis_checkpoints/fbaseline_resultsb.csv")
 
 # Join baseline models with full models and compare performance within-fold.
 model_fold_deltas = baseline_results %>%
@@ -278,7 +278,7 @@ model_deltas
 # Load language model data (SyntaxGym, PPL)
 
 ```{r}
-language_model_data = read.csv("../data/full_ppl.csv") %>%
+language_model_data = read.csv("../data/model_metadata.csv") %>%
   mutate(model = as.character(model),
          model = if_else(model == "gpt-2", "gpt2", model),
          model = as.factor(model)) %>%
@@ -288,11 +288,7 @@ language_model_data = read.csv("../data/full_ppl.csv") %>%
                                 training == "bllip-xs" ~ 1)) %>%
   mutate(seed = as.factor(seed)) %>%
   select(-pid, -test_loss) %>%
-  #select(-X, -corpus, -model_key, -mse, -corr, -l1, -train_l1) %>%
   distinct(model, training, seed, .keep_all = TRUE)
-# TODO: Why are the seeds and models not the same in the two data frames?
-# I think we have some 5gram seeds with an extra "1" in the factor name. This is borking things.
-# TODO check with jenn/ethan about this
 table(language_model_data$seed)
 table(model_deltas$seed)
 ```
@@ -302,8 +298,12 @@ First join delta-metric data with model auxiliary data.
 ```{r}
 model_deltas = model_deltas %>%
   merge(language_model_data, by = c("seed", "training", "model"), all=T) %>%
-  #right_join(language_model_data, by=c("seed", "training", "model")) %>%
   drop_na()
+
+model_fold_deltas = model_fold_deltas %>%
+  merge(language_model_data, by = c("seed", "training", "model"), all=T) %>%
+  drop_na()
+
 model_deltas
 ```
 
@@ -317,9 +317,10 @@ This will support regressions later on that don't collapse across folds.
 # Exclude ordered-neurons from all analyses.
 model_deltas <- model_deltas %>%
   filter(model != "ordered-neurons",
-         corpus != "bnc-brown")
+         model != "gpt2")
 model_fold_deltas <- model_fold_deltas %>%
-  filter(model != "ordered-neurons")
+  filter(model != "ordered-neurons",
+         model != "gpt2")
 ```
 
 
@@ -392,7 +393,7 @@ d_resid %>%
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-#ggsave("./cogsci_images/ppl_sg.png",height=4.5,width=11)
+ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=11)
 ```
 
 
@@ -410,7 +411,7 @@ do_stepwise_regression = function(cur_corpus) {
   print(anova(lm1, lm2))
   summary(lm2)
 }
-do_stepwise_regression("bnc-brown")
+#do_stepwise_regression("bnc-brown")
 do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
@@ -419,6 +420,7 @@ do_stepwise_regression("natural-stories")
 
 ```{r}
 model_deltas %>%
+  filter(model != "gpt2") %>%
   ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
@@ -435,13 +437,14 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-#ggsave("./cogsci_images/ppl_loglik.png",height=4.5,width=11)
+ggsave("../images/cuny2020/ppl_loglik.png",height=4.5,width=11)
+
 ```
 
 ```{r}
 model_deltas %>%
-  filter(model != "5gram", training != "bllip-lg") %>%
-  group_by(training, corpus) %>%
+  #filter(model != "5gram", training != "bllip-lg") %>%
+  group_by(model, corpus) %>%
     #summarise(n = n())
     summarise(corr = as.numeric(cor.test(delta_test_mean, test_ppl)[4]),
               pval = as.numeric(cor.test(delta_test_mean, test_ppl)[3]))
@@ -456,7 +459,7 @@ model_deltas %>%
   ggplot(aes(x=train_size, y=delta_test_mean, color=model)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), width = 0.1) +
     geom_smooth(method="lm", se=T, alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
     ylab(metric) +
     xlab("Log Million Training Tokens") +
     ggtitle("Training Size vs. Predictive Power") +
@@ -476,7 +479,7 @@ model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   ggplot(aes(x=train_size, y=sg_score, color=model)) +
     geom_smooth(method="lm", se=T, alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=0.5, size=3) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
     ylab("SG SCore") +
     xlab("Log Million Training Tokens") +
     ggtitle("Training Size vs. Syntactic Generalization") +
@@ -495,6 +498,7 @@ model_deltas %>%
 ```{r}
   
 all_data %>%
+  filter(model!="gpt2") %>%
   filter(surprisal < 15, surprisal > 0) %>%
   ggplot(aes(x=surprisal, y=psychometric, color=training)) +
     stat_smooth(se=T, alpha=0.5) +
@@ -511,5 +515,5 @@ all_data %>%
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-#ggsave("./cogsci_images/surp_corr.png",height=4.5,width=11)
+ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=9)
 ```
