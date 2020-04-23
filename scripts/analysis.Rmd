@@ -24,8 +24,7 @@ logLik_test <- function(lm, test_X, test_y) {
   # Get std.dev. of residual, estimated from train data
   stdev <- sigma(lm)
   # For each prediction--observation, get the density p(obs | N(predicted, model_sigma)) and reduce
-  # DEV: changed to mean
-  density <- mean(dnorm(test_y, predictions, stdev, log=TRUE))
+  density <- sum(dnorm(test_y, predictions, stdev, log=TRUE))
   return(density)
 }
 # Get per-prediction log-likelihood
@@ -54,7 +53,6 @@ data = read.csv("../data/harmonized_results.csv")
 
 all_data = data %>%
   mutate(seed = as.factor(seed)) %>%
-  filter(surprisal < 40) %>% # DEV
   group_by(corpus, model, training, seed) %>%
     mutate(prev_surp = lag(surprisal),
          prev_code = lag(code),
@@ -82,7 +80,6 @@ all_data = all_data %>%
     model = as.character(model),
     model = if_else(model == "gpt-2", "gpt2", model),
     model = as.factor(model))
-  
 ```
 
 
@@ -90,13 +87,13 @@ all_data = all_data %>%
 ```{r}
 # Compute linear model stats for the given training data subset and full test data.
 # Automatically subsets the test data to match the relevant group for which we are training a linear model.
-get_lm_data <- function(df, test_data, formula, store_env) {
+get_lm_data <- function(df, test_data, formula, fold, store_env) {
   #this_lm <- gam(formula, data=df);
   this_lm = lm(formula, data=df)
   this_test_data <- semi_join(test_data, df, by=c("training", "model", "seed", "corpus"));
   
   # Save lm to the global env so that we can access residuals later.
-  lm_name = unique(paste(df$model, df$training, df$seed, df$corpus))[1]
+  lm_name = paste(unique(paste(df$model, df$training, df$seed, df$corpus))[1], fold)
   assign(lm_name, this_lm, envir=store_env)
   
   summarise(df,
@@ -105,14 +102,23 @@ get_lm_data <- function(df, test_data, formula, store_env) {
             test_mse = mse_test(this_lm, this_test_data, this_test_data$psychometric))
 }
 # For a previously fitted lm stored in store_env, get the residuals on test data of the relevant data subset.
-get_lm_residuals <- function(df, store_env) {
+get_lm_residuals <- function(df, fold, store_env) {
   # Retrieve the relevant lm.
-  lm_name = unique(paste(df$model, df$training, df$seed, df$corpus))[1]
+  lm_name = paste(unique(paste(df$model, df$training, df$seed, df$corpus))[1], fold)
   this_lm <- get(lm_name, envir=store_env)
   
   mutate(df,
          likelihood = logLik_test_per(this_lm, df, df$psychometric),
          resid = df$psychometric - predict(this_lm, df, re.form=NA))
+}
+# Compute per-example delta-log-likelihood for the given test fold.
+get_lm_delta_log_lik <- function(test_data, fold, baseline_env, full_env) {
+  lm_name = paste(unique(paste(test_data$model, test_data$training, test_data$seed, test_data$corpus))[1], fold)
+  baseline_lm <- get(lm_name, envir=baseline_env)
+  full_lm <- get(lm_name, envir=full_env)
+  
+  delta_log_lik = logLik_test_per(full_lm, test_data, test_data$psychometric) - logLik_test_per(baseline_lm, test_data, test_data$psychometric)
+  return(cbind(test_data, delta_log_lik=delta_log_lik))
 }
 #####
 # Define regression formulae.
@@ -134,43 +140,48 @@ full_sprt_regression = psychometric ~ surprisal + prev_surp + freq + prev_freq +
 # Prepare frames/environments for storing results/objects.
 baseline_results = data.frame()
 full_model_results = data.frame()
-baseline_residuals = data.frame()
-full_residuals = data.frame()
+#baseline_residuals = data.frame()
+#full_residuals = data.frame()
+log_lik_deltas = data.frame()
+
 #Randomly shuffle the data
 all_data<-all_data[sample(nrow(all_data)),]
 #Create K equally size folds
 K = 5
 folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 #Perform 10 fold cross validation
-baseline_corpus = function(corpus, df, test_data, env) {
+
+# Fit models for some fold of the data.
+baseline_corpus = function(corpus, df, test_data, fold, env) {
   if(corpus == "dundee") {
-    get_lm_data(df, test_data, baseline_rt_regression, env)
+    get_lm_data(df, test_data, baseline_rt_regression, fold, env)
   } else {
-    get_lm_data(df, test_data, baseline_sprt_regression, env)
+    get_lm_data(df, test_data, baseline_sprt_regression, fold, env)
   }
 }
-full_model_corpus = function(corpus, df, test_data, env) {
+full_model_corpus = function(corpus, df, test_data, fold, env) {
   if(corpus[1] == "dundee") {
-    get_lm_data(df, test_data, full_rt_regression, env)
+    get_lm_data(df, test_data, full_rt_regression, fold, env)
   } else {
-    get_lm_data(df, test_data, full_sprt_regression, env)
+    get_lm_data(df, test_data, full_sprt_regression, fold, env)
   }
 }
+
+# Prepare a new Environment in which we store fitted LMs, which we'll query later for residuals and other metrics.
+baseline_env = new.env()
+full_env = new.env()
+
 for(i in 1:K) { 
   #Segement your data by fold using the which() function 
-  testIndexes <- which(folds==i,arr.ind=TRUE)
+  testIndexes <- which(folds==i, arr.ind=TRUE)
   test_data <- all_data[testIndexes, ]
   train_data <- all_data[-testIndexes, ]
-  
-  # Prepare a new Environment in which we store fitted LMs, which we'll query later for residuals.
-  baseline_env = environment()
-  full_env = environment()
   
   # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
   baselines = train_data %>%
     group_by(model, training, seed, corpus) %>%
       print(model) %>%
-      do(baseline_corpus(unique(.$corpus), ., test_data, baseline_env)) %>%
+      do(baseline_corpus(unique(.$corpus), ., test_data, i, baseline_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
@@ -180,26 +191,34 @@ for(i in 1:K) {
   # Compute a full linear model for each model--training--seed-RT-corpus combination
   full_models = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(full_model_corpus(unique(.$corpus), ., test_data, full_env)) %>%
+      do(full_model_corpus(unique(.$corpus), ., test_data, i, full_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
            fold = i)
   
   full_model_results = rbind(full_model_results, full_models)
   
-  fold_baseline_residuals = test_data %>%
+  # Compute delta-log-likelihoods
+  fold_log_lik_deltas = test_data %>%
     group_by(model, training, seed, corpus) %>%
-      do(get_lm_residuals(., baseline_env)) %>%
+      do(get_lm_delta_log_lik(., i, baseline_env, full_env)) %>%
     ungroup()
+
+  log_lik_deltas = rbind(log_lik_deltas, fold_log_lik_deltas)
   
-  baseline_residuals = rbind(baseline_residuals, fold_baseline_residuals)
-  
-  fold_full_residuals = test_data %>%
-    group_by(model, training, seed, corpus) %>%
-      do(get_lm_residuals(., full_env)) %>%
-    ungroup() 
-  
-  full_residuals = rbind(full_residuals, fold_full_residuals)
+  # fold_baseline_residuals = test_data %>%
+  #   group_by(model, training, seed, corpus) %>%
+  #     do(get_lm_residuals(., i, baseline_env)) %>%
+  #   ungroup()
+  # 
+  # baseline_residuals = rbind(baseline_residuals, fold_baseline_residuals)
+  # 
+  # fold_full_residuals = test_data %>%
+  #   group_by(model, training, seed, corpus) %>%
+  #     do(get_lm_residuals(., i, full_env)) %>%
+  #   ungroup() 
+  # 
+  # full_residuals = rbind(full_residuals, fold_full_residuals)
 }
 ```
 
@@ -209,44 +228,24 @@ for(i in 1:K) {
 ```
 
 ```{r}
+model_deltas = log_lik_deltas %>%
+  group_by(model, training, seed, corpus) %>% 
+  summarise(mean_delta_log_lik = mean(delta_log_lik),
+            sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)))
+```
+
+```{r}
 write.csv(full_model_results, "../data/analysis_checkpoints/full_model_result.csv")
 write.csv(baseline_results, "../data/analysis_checkpoints/baseline_results.csv")
 #full_model_results = read.csv("../data/analysis_checkpoints/ffull_model_results.csv")
 #baseline_results = read.csv("../data/analysis_checkpoints/fbaseline_resultsb.csv")
-
-# Join baseline models with full models and compare performance within-fold.
-model_fold_deltas = baseline_results %>%
-  right_join(full_model_results, suffix=c(".baseline", ".full"),
-             by=c("model", "training", "seed", "corpus", "fold")) %>%
-  
-  mutate(seed = as.factor(seed)) %>%
-  
-  # Compute per-fold deltas.
-  group_by(model, training, seed, corpus, fold) %>%
-    mutate(delta_log_lik = test_lik.full - test_lik.baseline,
-           delta_mse = test_mse.full - test_mse.baseline) %>%
-  ungroup() %>%
-  select(model, training, seed, corpus, fold,
-         delta_log_lik, delta_mse)
-
-# Now compute across-fold delta statistics for each model--training--seed--corpus.
-model_deltas = model_fold_deltas %>%
-  group_by(model, training, seed, corpus) %>%
-    summarise(mean_delta_log_lik = sum(delta_log_lik),
-              sem_delta_log_lik = sd(delta_log_lik) / sqrt(length(delta_log_lik)),
-              mean_delta_mse = sum(delta_mse),
-              sem_delta_mse = sd(delta_mse) / sqrt(length(delta_mse)))
 ```
 
 ```{r}
 metric <- "ΔLogLik"
 #metric <- "-ΔMSE"
-# Select the relevant metric.
-model_fold_deltas = model_fold_deltas %>%
-  # Retrieve the current test metric
-  mutate(delta_test = delta_log_lik) %>%
-  select(-delta_log_lik, -delta_mse)
-# Select the relevant metric.
+
+# # Select the relevant metric.
 model_deltas = model_deltas %>%
     # Retrieve the current test metric
     mutate(delta_test_mean = mean_delta_log_lik,
@@ -256,7 +255,8 @@ model_deltas = model_deltas %>%
     
     # Remove the raw metrics.
     select(-mean_delta_log_lik, -sem_delta_log_lik,
-           -mean_delta_mse, -sem_delta_mse)
+           #-mean_delta_mse, -sem_delta_mse
+           )
 model_deltas
 ```
 
@@ -300,10 +300,6 @@ model_deltas = model_deltas %>%
   merge(language_model_data, by = c("seed", "training", "model"), all=T) %>%
   drop_na()
 
-model_fold_deltas = model_fold_deltas %>%
-  merge(language_model_data, by = c("seed", "training", "model"), all=T) %>%
-  drop_na()
-
 model_deltas
 ```
 
@@ -316,8 +312,6 @@ This will support regressions later on that don't collapse across folds.
 ```{r Filter models and/or corpora}
 # Exclude ordered-neurons from all analyses.
 model_deltas <- model_deltas %>%
-  filter(model != "ordered-neurons")
-model_fold_deltas <- model_fold_deltas %>%
   filter(model != "ordered-neurons")
 ```
 
@@ -359,12 +353,12 @@ We control for effects of perplexity by relating the residuals of a `performance
 
 ```{r Residualized regression}
 # Prepare a residualized regression for x1 onto y, controlling for the effects of x2.
-d_resid = model_fold_deltas %>%
+d_resid = model_deltas %>%
   drop_na() %>%
   
-  # Residualize delta metric w.r.t PPL for each model--training--seed--fold
+  # Residualize delta metric w.r.t PPL for each model--training--seed
   group_by(corpus) %>%
-    mutate(resid.delta = resid(lm(delta_test ~ training:test_ppl))) %>%
+    mutate(resid.delta = resid(lm(delta_test_mean ~ training:test_ppl))) %>%
   ungroup() %>%
   
   # Residualize SG score w.r.t. PPL for each training group
@@ -411,15 +405,14 @@ ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=11)
 
 ```{r Stepwise regression}
 do_stepwise_regression = function(cur_corpus) {
-  regression_data = model_fold_deltas %>%
+  regression_data = model_deltas %>%
     filter(corpus == cur_corpus)
   
-  # NB we're incorporating variance across folds into this regression, good!
   print("----------------------")
   print(cur_corpus)
   
-  lm1 = lm(delta_test ~ training:test_ppl, data = regression_data)
-  lm2 = lm(delta_test ~ training:test_ppl + sg_score, data = regression_data)
+  lm1 = lm(delta_test_mean ~ training:test_ppl, data = regression_data)
+  lm2 = lm(delta_test_mean ~ training:test_ppl + sg_score, data = regression_data)
   print(anova(lm1, lm2))
   summary(lm2)
 }
