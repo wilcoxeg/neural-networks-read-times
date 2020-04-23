@@ -24,7 +24,8 @@ logLik_test <- function(lm, test_X, test_y) {
   # Get std.dev. of residual, estimated from train data
   stdev <- sigma(lm)
   # For each prediction--observation, get the density p(obs | N(predicted, model_sigma)) and reduce
-  density <- sum(dnorm(test_y, predictions, stdev, log=TRUE))
+  # DEV: changed to mean
+  density <- mean(dnorm(test_y, predictions, stdev, log=TRUE))
   return(density)
 }
 # Get per-prediction log-likelihood
@@ -53,6 +54,7 @@ data = read.csv("../data/harmonized_results.csv")
 
 all_data = data %>%
   mutate(seed = as.factor(seed)) %>%
+  filter(surprisal < 40) %>% # DEV
   group_by(corpus, model, training, seed) %>%
     mutate(prev_surp = lag(surprisal),
          prev_code = lag(code),
@@ -202,8 +204,8 @@ for(i in 1:K) {
 ```
 
 ```{r}
-write.csv(full_residuals, "../data/analysis_checkpoints/full_residuals.csv")
-write.csv(baseline_residuals, "../data/analysis_checkpoints/baseline_residuals.csv")
+#write.csv(full_residuals, "../data/analysis_checkpoints/full_residuals.csv")
+#write.csv(baseline_residuals, "../data/analysis_checkpoints/baseline_residuals.csv")
 ```
 
 ```{r}
