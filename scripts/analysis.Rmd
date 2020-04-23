@@ -202,13 +202,13 @@ for(i in 1:K) {
 ```
 
 ```{r}
-#write.csv(full_residuals, "../data/analysis_checkpoints/ffull_residuals.csv")
-#write.csv(baseline_residuals, "../data/analysis_checkpoints/fbaseline_residuals.csv")
+write.csv(full_residuals, "../data/analysis_checkpoints/full_residuals.csv")
+write.csv(baseline_residuals, "../data/analysis_checkpoints/baseline_residuals.csv")
 ```
 
 ```{r}
 write.csv(full_model_results, "../data/analysis_checkpoints/full_model_result.csv")
-write.csv(baseline_results, "../data/analysis_checkpoints/fbaseline_results.csv")
+write.csv(baseline_results, "../data/analysis_checkpoints/baseline_results.csv")
 #full_model_results = read.csv("../data/analysis_checkpoints/ffull_model_results.csv")
 #baseline_results = read.csv("../data/analysis_checkpoints/fbaseline_resultsb.csv")
 
@@ -280,10 +280,10 @@ language_model_data = read.csv("../data/model_metadata.csv") %>%
   mutate(model = as.character(model),
          model = if_else(model == "gpt-2", "gpt2", model),
          model = as.factor(model)) %>%
-  mutate(train_size = case_when(training == "bllip-lg" ~ 42,
-                                training == "bllip-md" ~ 15,
-                                training == "bllip-sm" ~ 5,
-                                training == "bllip-xs" ~ 1)) %>%
+  mutate(train_size = case_when(str_starts(training, "bllip-lg") ~ 42,
+                                str_starts(training, "bllip-md") ~ 15,
+                                str_starts(training, "bllip-sm") ~ 5,
+                                str_starts(training, "bllip-xs") ~ 1)) %>%
   mutate(seed = as.factor(seed)) %>%
   select(-pid, -test_loss) %>%
   distinct(model, training, seed, .keep_all = TRUE)
@@ -314,11 +314,9 @@ This will support regressions later on that don't collapse across folds.
 ```{r Filter models and/or corpora}
 # Exclude ordered-neurons from all analyses.
 model_deltas <- model_deltas %>%
-  filter(model != "ordered-neurons",
-         model != "gpt2")
+  filter(model != "ordered-neurons")
 model_fold_deltas <- model_fold_deltas %>%
-  filter(model != "ordered-neurons",
-         model != "gpt2")
+  filter(model != "ordered-neurons")
 ```
 
 
@@ -336,7 +334,14 @@ model_deltas %>%
     ylab(metric) +
     xlab("Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
-    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
+                              "bllip-md"="#39568CFF",
+                              "bllip-sm"="#1F968BFF",
+                              "bllip-xs"="#73D055FF",
+                              "bllip-lg-gptbpe"="#888888",
+                              "bllip-md-gptbpe"="#AAAAAA",
+                              "bllip-sm-gptbpe"="#CCCCCC",
+                              "bllip-xs-gptbpe"="#CCCCCC")) +
     facet_grid(~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
@@ -384,7 +389,14 @@ d_resid %>%
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
-    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "bllip-lg-gptbpe"="#888888",
+                                  "bllip-md-gptbpe"="#AAAAAA",
+                                  "bllip-sm-gptbpe"="#CCCCCC",
+                                  "bllip-xs-gptbpe"="#CCCCCC")) +
     facet_grid(.~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
@@ -409,7 +421,7 @@ do_stepwise_regression = function(cur_corpus) {
   print(anova(lm1, lm2))
   summary(lm2)
 }
-do_stepwise_regression("bnc-brown")
+#do_stepwise_regression("bnc-brown")
 do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
@@ -418,7 +430,6 @@ do_stepwise_regression("natural-stories")
 
 ```{r}
 model_deltas %>%
-  filter(model != "gpt2") %>%
   ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
@@ -427,7 +438,14 @@ model_deltas %>%
     xlab("Test Perplexity") +
     #coord_cartesian(ylim = c(1, 16)) +
     ggtitle("Test Perplexity vs. Predictive Power") +
-    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "bllip-lg-gptbpe"="#888888",
+                                  "bllip-md-gptbpe"="#AAAAAA",
+                                  "bllip-sm-gptbpe"="#CCCCCC",
+                                  "bllip-xs-gptbpe"="#CCCCCC")) +
     facet_grid(~corpus, scales="free") +
     #coord_cartesian(ylim = c(0, 150)) +
     theme(axis.text=element_text(size=12),
@@ -496,7 +514,6 @@ model_deltas %>%
 ```{r}
   
 all_data %>%
-  filter(model!="gpt2") %>%
   filter(surprisal < 15, surprisal > 0) %>%
   ggplot(aes(x=surprisal, y=psychometric, color=training)) +
     stat_smooth(se=T, alpha=0.5) +
@@ -506,12 +523,19 @@ all_data %>%
     xlab("Surprisal (bits)") +
     ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
     facet_grid(corpus~model, scales = "free") +
-    scale_color_manual(values = c("#440154FF", "#39568CFF", "#1F968BFF", "#73D055FF")) +
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
+                              "bllip-md"="#39568CFF",
+                              "bllip-sm"="#1F968BFF",
+                              "bllip-xs"="#73D055FF",
+                              "bllip-lg-gptbpe"="#888888",
+                              "bllip-md-gptbpe"="#AAAAAA",
+                              "bllip-sm-gptbpe"="#CCCCCC",
+                              "bllip-xs-gptbpe"="#CCCCCC")) +
     theme(axis.text=element_text(size=14),
           axis.text.y = element_text(size = 10),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=9)
+ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=12)
 ```
