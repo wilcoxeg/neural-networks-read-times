@@ -285,7 +285,12 @@ language_model_data = read.csv("../data/model_metadata.csv") %>%
   mutate(train_size = case_when(str_starts(training, "bllip-lg") ~ 42,
                                 str_starts(training, "bllip-md") ~ 15,
                                 str_starts(training, "bllip-sm") ~ 5,
-                                str_starts(training, "bllip-xs") ~ 1)) %>%
+                                str_starts(training, "bllip-xs") ~ 1),
+         
+         # Training vocabulary usually covaries with the training corpus.
+         # But BPE models share a vocabulary across training corpora.
+         training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))
+         ) %>%
   mutate(seed = as.factor(seed)) %>%
   select(-pid, -test_loss) %>%
   distinct(model, training, seed, .keep_all = TRUE)
@@ -326,7 +331,7 @@ model_deltas %>%
   ggplot(aes(x=sg_score, y=delta_test_mean)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem)) +
     geom_smooth(method="lm", se=T) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(color=training, shape=model)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(color=training_vocab, shape=model)) +
     ylab(metric) +
     xlab("Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
@@ -334,10 +339,7 @@ model_deltas %>%
                               "bllip-md"="#39568CFF",
                               "bllip-sm"="#1F968BFF",
                               "bllip-xs"="#73D055FF",
-                              "bllip-lg-gptbpe"="#888888",
-                              "bllip-md-gptbpe"="#AAAAAA",
-                              "bllip-sm-gptbpe"="#CCCCCC",
-                              "bllip-xs-gptbpe"="#CCCCCC")) +
+                              "gptbpe"="#888888")) +
     facet_grid(~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
@@ -361,13 +363,13 @@ d_resid = model_deltas %>%
     mutate(resid.delta = resid(lm(delta_test_mean ~ training:test_ppl))) %>%
   ungroup() %>%
   
-  # Residualize SG score w.r.t. PPL for each training group
-  group_by(training) %>%
+  # Residualize SG score w.r.t. PPL for each training vocabulary
+  group_by(training_vocab) %>%
     # NB no need for training:ppl interaction, since we're within-group.
     mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
   ungroup() %>%
   # Compute summary statistics across model--training--seed--corpus.
-  group_by(model, training, corpus, seed) %>%
+  group_by(model, training_vocab, corpus, seed) %>%
     summarise(resid.delta.mean = mean(resid.delta),
               resid.delta.sem = sd(resid.delta) / sqrt(length(resid.delta)),
               resid.sg.mean = mean(resid.sg),
@@ -381,7 +383,7 @@ d_resid %>%
                       ymin=resid.delta.mean - resid.delta.sem,
                       ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
     geom_smooth(method="lm", se=T) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
@@ -389,10 +391,7 @@ d_resid %>%
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
-                                  "bllip-lg-gptbpe"="#888888",
-                                  "bllip-md-gptbpe"="#AAAAAA",
-                                  "bllip-sm-gptbpe"="#CCCCCC",
-                                  "bllip-xs-gptbpe"="#CCCCCC")) +
+                                  "gptbpe"="#888888")) +
     facet_grid(.~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
@@ -411,8 +410,8 @@ do_stepwise_regression = function(cur_corpus) {
   print("----------------------")
   print(cur_corpus)
   
-  lm1 = lm(delta_test_mean ~ training:test_ppl, data = regression_data)
-  lm2 = lm(delta_test_mean ~ training:test_ppl + sg_score, data = regression_data)
+  lm1 = lm(delta_test_mean ~ training_vocab:test_ppl, data = regression_data)
+  lm2 = lm(delta_test_mean ~ training_vocab:test_ppl + sg_score, data = regression_data)
   print(anova(lm1, lm2))
   summary(lm2)
 }
@@ -425,7 +424,7 @@ do_stepwise_regression("natural-stories")
 
 ```{r}
 model_deltas %>%
-  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training)) +
+  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training_vocab)) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
     geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model)) +
@@ -437,10 +436,7 @@ model_deltas %>%
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
-                                  "bllip-lg-gptbpe"="#888888",
-                                  "bllip-md-gptbpe"="#AAAAAA",
-                                  "bllip-sm-gptbpe"="#CCCCCC",
-                                  "bllip-xs-gptbpe"="#CCCCCC")) +
+                                  "gptbpe"="#888888")) +
     facet_grid(~corpus, scales="free") +
     #coord_cartesian(ylim = c(0, 150)) +
     theme(axis.text=element_text(size=12),
@@ -523,9 +519,9 @@ all_data %>%
                               "bllip-sm"="#1F968BFF",
                               "bllip-xs"="#73D055FF",
                               "bllip-lg-gptbpe"="#888888",
-                              "bllip-md-gptbpe"="#AAAAAA",
-                              "bllip-sm-gptbpe"="#CCCCCC",
-                              "bllip-xs-gptbpe"="#CCCCCC")) +
+                              "bllip-md-gptbpe"="#888888",
+                              "bllip-sm-gptbpe"="#888888",
+                              "bllip-xs-gptbpe"="#888888")) +
     theme(axis.text=element_text(size=14),
           axis.text.y = element_text(size = 10),
           strip.text.x = element_text(size=14),
