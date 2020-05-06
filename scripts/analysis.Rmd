@@ -9,10 +9,7 @@ output: html_notebook
 library(tidyverse)
 library(lme4)
 library(lmerTest)
-library(plotrix)
-library(stringr)
-library(readxl)
-library(RColorBrewer)
+library(logging)
 library(mvtnorm)
 library(mgcv)
 ```
@@ -82,7 +79,19 @@ all_data = all_data %>%
     model = as.factor(model))
 ```
 
+```{r}
+# Drop tokens for which any model is missing surprisal data.
 
+# Compute the ideal number of model--seed--training observations per token.
+ideal_token_obs_count = all_data %>% group_by(corpus, code) %>% group_size() %>% max()
+
+to_drop = all_data %>% group_by(corpus, code) %>% filter(n() != ideal_token_obs_count) %>% ungroup()
+loginfo(paste("Dropping", nrow(to_drop), "observations corresponding to corpus tokens which are missing observations for some model."))
+loginfo(paste("Dropping", to_drop %>% group_by(corpus, code) %>% n_groups(), "tokens which are missing observations for some model."))
+
+all_data = all_data %>% anti_join(to_drop %>% group_by(corpus, code), by=c("corpus", "code"))
+loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% group_by(corpus, code) %>% n_groups(), " tokens) remain."))
+```
  
 ```{r}
 # Compute linear model stats for the given training data subset and full test data.
@@ -140,8 +149,8 @@ full_sprt_regression = psychometric ~ surprisal + prev_surp + freq + prev_freq +
 # Prepare frames/environments for storing results/objects.
 baseline_results = data.frame()
 full_model_results = data.frame()
-#baseline_residuals = data.frame()
-#full_residuals = data.frame()
+baseline_residuals = data.frame()
+full_residuals = data.frame()
 log_lik_deltas = data.frame()
 
 #Randomly shuffle the data
@@ -206,19 +215,19 @@ for(i in 1:K) {
 
   log_lik_deltas = rbind(log_lik_deltas, fold_log_lik_deltas)
   
-  # fold_baseline_residuals = test_data %>%
-  #   group_by(model, training, seed, corpus) %>%
-  #     do(get_lm_residuals(., i, baseline_env)) %>%
-  #   ungroup()
-  # 
-  # baseline_residuals = rbind(baseline_residuals, fold_baseline_residuals)
-  # 
-  # fold_full_residuals = test_data %>%
-  #   group_by(model, training, seed, corpus) %>%
-  #     do(get_lm_residuals(., i, full_env)) %>%
-  #   ungroup() 
-  # 
-  # full_residuals = rbind(full_residuals, fold_full_residuals)
+  fold_baseline_residuals = test_data %>%
+    group_by(model, training, seed, corpus) %>%
+      do(get_lm_residuals(., i, baseline_env)) %>%
+    ungroup()
+
+  baseline_residuals = rbind(baseline_residuals, fold_baseline_residuals)
+
+  fold_full_residuals = test_data %>%
+    group_by(model, training, seed, corpus) %>%
+      do(get_lm_residuals(., i, full_env)) %>%
+    ungroup()
+
+  full_residuals = rbind(full_residuals, fold_full_residuals)
 }
 ```
 
@@ -505,7 +514,7 @@ model_deltas %>%
 ```{r}
   
 all_data %>%
-  filter(surprisal < 15, surprisal > 0) %>%
+  #filter(surprisal < 15, surprisal > 0) %>%
   ggplot(aes(x=surprisal, y=psychometric, color=training)) +
     stat_smooth(se=T, alpha=0.5) +
     #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
@@ -529,4 +538,21 @@ all_data %>%
           axis.title=element_text(size=18),
           legend.position = "right")
 ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=12)
+```
+
+
+```{r}
+full_residuals %>% #filter(model == "gpt2", str_detect(training, "gptbpe")) %>% 
+  mutate(training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))) %>% 
+  ggplot(aes(x=surprisal, y=resid, color=training)) +
+    facet_grid(~corpus) +
+    geom_smooth()
+```
+
+```{r}
+full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model", "training", "seed"), suffix=c(".full", ".baseline")) %>% 
+  mutate(resid_delta=resid.full - resid.baseline) %>% 
+  ggplot(aes(x=surprisal.full, y=resid_delta, color=training)) +
+    facet_grid(~corpus) +
+    geom_smooth()
 ```
