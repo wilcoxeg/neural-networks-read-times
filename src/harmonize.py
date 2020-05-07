@@ -115,9 +115,8 @@ def harmonize_rows(ref, d, log_target_code=None):
                 for _ in range(len(future_model_tokens)):
                     d.pop(0)
             else:
-                print(code)
-#             else:
-#                 curr_d = d.pop(0)
+                # Do nothing.
+                changed = False
         else:
             changed = False
             
@@ -134,6 +133,14 @@ def harmonize_rows(ref, d, log_target_code=None):
         model_token, surprisal = curr_d
         code, rt_token, rt = curr_ref
         
+        #### HACKS
+        # Dundee 61827: "[sic]" has corresponding mysterious "UNK-CAPS-DASH"
+        # token preceding it. It's possible that the punctuation was dropped
+        # from the Dundee data.
+        if code == 61827 and rt_token == "[sic]" and model_token == "UNK-CAPS-DASH":
+            curr_d = d.pop(0)
+            continue
+        
         if punct_at_start_re.search(rt_token):
             to_print = 10
             
@@ -144,7 +151,7 @@ def harmonize_rows(ref, d, log_target_code=None):
                 pass
                 #print("=======")
                 
-        if log_target_code is not None and code > log_target_code - 5 and code < log_target_code + 5:
+        if log_target_code is not None and code > log_target_code - 10 and code < log_target_code + 10:
             log(curr_d, curr_ref, "**" if code == log_target_code else "")
                 
         if mismatched[0] == 5:
