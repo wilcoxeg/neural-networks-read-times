@@ -4,8 +4,8 @@ import regex as re
 
 
 
-punct_at_end_re = re.compile(r"\W+$")
-punct_at_start_re = re.compile(r"^\W+")
+punct_at_end_re = re.compile(r"[-,.!?'\"$()[\]:;]+$")
+punct_at_start_re = re.compile(r"^[-,.!?'\"$()[\]:;]+")
 
 # NB we have a branch reset group here. There are just two match groups.
 contractions_re = re.compile(r"(?"
@@ -77,12 +77,12 @@ def harmonize_rows(ref, d, log_target_code=None):
             match = punct_at_end_re.findall(rt_token)[0]
             while match.startswith(d[0][0]):
                 match = match[len(d[0][0]):]
-                d.pop(0)
+                popped = d.pop(0)
         # If current ref has leading punctuation, remove and re-check
         elif punct_at_start_re.search(rt_token):
             rt_token_new = punct_at_start_re.sub("", rt_token)
             curr_ref = (code, rt_token_new, rt)
-
+            
             # If current model token(s) are that punctuation, drop those tokens
             match = punct_at_start_re.findall(rt_token)[0]
             while match.startswith(model_token):
@@ -90,21 +90,34 @@ def harmonize_rows(ref, d, log_target_code=None):
                 model_token, surprisal = d.pop(0)
 
             curr_d = (model_token, surprisal)
+            
+        code, rt_token, rt = curr_ref
         # Process PTB detokenized contractions
-        elif contractions_re.search(rt_token):
-            ideal_tokenized_form = tuple(contractions_re.sub(r"\1 \2", rt_token).split(" "))
-
-            # Make sure we have the expanded form here in the model tokenization
-            future_model_tokens = d[:len(ideal_tokenized_form) - 1]
-            model_token_full = [model_token] + [tok for tok, _ in future_model_tokens]
-            if ideal_tokenized_form == tuple(model_token_full):
+        if contractions_re.search(rt_token):
+            
+            # Check that future model tokens comport with this detected
+            # contraction.
+            #
+            # Rather than strictly checking equality between the concatenation
+            # of the future model tokens with the current and the RT token,
+            # we'll just check the equality of the succeeding tokens with the
+            # relevant part of the RT token. This is because sometimes the RT
+            # token "stem" and the original model token *should* mismatch --
+            # e.g. when the model token is an UNK.
+            ideal_tokenized_suffix = tuple(contractions_re.search(rt_token).group(2).split(" "))
+            future_model_rows = d[:len(ideal_tokenized_suffix)]
+            future_model_tokens = tuple(tok for tok, _ in future_model_rows)
+            if ideal_tokenized_suffix == future_model_tokens:
                 # Build a little synthetic `curr_d`, `curr_ref` by adding surprisals
-                curr_d = ("".join(model_token_full), surprisal + sum(surp for _, surp in future_model_tokens))
+                curr_d = (model_token + "".join(future_model_tokens),
+                          surprisal + sum(surp for _, surp in future_model_rows))
                 # Pop off those tokens from the queue now that they've been absorbed
                 for _ in range(len(future_model_tokens)):
                     d.pop(0)
             else:
-                curr_d = d.pop(0)
+                print(code)
+#             else:
+#                 curr_d = d.pop(0)
         else:
             changed = False
             
