@@ -115,12 +115,6 @@ loginfo(paste("Dropping", to_drop %>% group_by(corpus, code) %>% n_groups(), "to
 all_data = all_data %>% anti_join(to_drop_zeros %>% group_by(corpus, code), by=c("corpus", "code"))
 loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% group_by(corpus, code) %>% n_groups(), " tokens) remain."))
 ```
- 
-```{r}
-# TODO: There are a huge number of missing rows for natural stories. What's going on?
-# There are only ~11k tokens in the corpus in the first place ..
-
-```
 
  
 # Learn models
@@ -510,15 +504,6 @@ model_deltas %>%
           legend.position = "right")
 ggsave("../images/cuny2020/ppl_loglik.png",height=4.5,width=11)
 
-```
-
-```{r}
-model_deltas %>%
-  #filter(model != "5gram", training != "bllip-lg") %>%
-  group_by(model, corpus) %>%
-    #summarise(n = n())
-    summarise(corr = as.numeric(cor.test(delta_test_mean, test_ppl)[4]),
-              pval = as.numeric(cor.test(delta_test_mean, test_ppl)[3]))
 ```
 
 
