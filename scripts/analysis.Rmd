@@ -121,15 +121,6 @@ loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% grou
 # There are only ~11k tokens in the corpus in the first place ..
 
 ```
- 
-```{r}
-missing_rows %>% filter(corpus == "natural-stories", training == "bllip-lg-gptbpe") # %>% group_by(code, word) %>% summarise(n=n())
-missing_rows %>% filter(corpus == "natural-stories", model == "gpt2") %>% group_by(code, word) %>% summarise(n=n())
-```
-
-```{r}
-all_data %>% filter(corpus == "natural-stories", code > 10800, code < 10810) %>% group_by(code, word) %>% summarise(n=n()) %>% arrange(code)
-```
 
  
 # Learn models
