@@ -598,6 +598,7 @@ all_data %>%
 ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=12)
 ```
 
+### Investigate vanilla
 
 ```{r}
 all_data %>%
@@ -621,19 +622,53 @@ all_data %>%
     #                           "bllip-xs-gptbpe"="#888888"))
 ```
 
-
-```{r}
-full_residuals %>% #filter(model == "gpt2", str_detect(training, "gptbpe")) %>% 
-  mutate(training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))) %>% 
-  ggplot(aes(x=surprisal, y=resid, color=training)) +
-    facet_grid(~corpus) +
-    geom_smooth()
+```{r Tony Blair is the source of that right-side dip}
+all_data %>% 
+  filter(corpus == "dundee", model == "vanilla", training == "bllip-lg", surprisal > 20, psychometric < 300)
 ```
 
 ```{r}
+print(full_residuals %>% filter(corpus == "dundee", model == "vanilla", training == "bllip-lg") %>% arrange(desc(resid)))
+full_residuals %>% filter(corpus == "dundee", model == "vanilla", training == "bllip-lg") %>% arrange(desc(resid)) %>% filter(resid > 150) %>% 
+  ggplot(aes(x=surprisal)) + geom_density()
+```
+
+
+### Investigate RNNG
+
+```{r}
+all_data %>%
+  #filter(surprisal < 15, surprisal > 0) %>%
+  filter(model == "rnng") %>% 
+  ggplot(aes(x=surprisal, y=psychometric)) +
+    #stat_smooth(se=T, alpha=0.5) +
+    #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
+    geom_point(alpha=0.1) + #stat="identity", position="dodge", alpha=1, size=3) +
+    ylab("Processing Time (ms)") +
+    xlab("Surprisal (bits)") +
+    ggtitle("Surprisal vs. Reading Time / Gaze Duration: RNNG") +
+    facet_grid(corpus~training, scales = "free")
+```
+
+```{r Tony Blair is the source of that right-side dip}
+all_data %>% 
+  filter(corpus == "dundee", model == "rnng", training == "bllip-lg", surprisal > 20, psychometric < 300)
+```
+
+```{r}
+print(full_residuals %>% filter(corpus == "dundee", model == "rnng", training == "bllip-lg") %>% arrange(desc(resid)))
+full_residuals %>% filter(corpus == "dundee", model == "rnng", training == "bllip-lg") %>% arrange(desc(resid)) %>% filter(resid > 150) %>% 
+  ggplot(aes(x=surprisal)) + geom_density()
+```
+
+### Investigate residuals overall
+
+```{r}
 full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model", "training", "seed"), suffix=c(".full", ".baseline")) %>% 
-  mutate(resid_delta=resid.full - resid.baseline) %>% 
+  mutate(resid_delta=resid.full - resid.baseline,
+         training_source=as.factor(str_replace(training, "-gptbpe", "")),
+         bpe=str_detect(training, "gptbpe")) %>% 
   ggplot(aes(x=surprisal.full, y=resid_delta, color=training)) +
-    facet_grid(~corpus) +
-    geom_smooth()
+    facet_grid(model~corpus) +
+    geom_point(alpha=0.1, size=0.5)
 ```
