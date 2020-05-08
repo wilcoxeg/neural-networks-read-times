@@ -10,7 +10,7 @@ punct_at_start_re = re.compile(r"^[-,.!?'\"$()[\]:;]+")
 # NB we have a branch reset group here. There are just two match groups.
 contractions_re = re.compile(r"(?"
                              "|([^' ])('ll|'LL|'re|'RE|'ve|'VE|n't|N'T|'[sS]|'[mM]|'[dD])"
-                             "|(can)(not)|(CAN)(NOT))")
+                             "|(can)(not)|(gon)(na))")
 
 def harmonize_rows(ref, d, log_target_code=None):
     """

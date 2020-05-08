@@ -93,6 +93,7 @@ missing_rows %>% ggplot(aes(x=corpus, fill=factor(paste(model,training)))) + geo
 print(missing_rows %>% group_by(model, training, seed, corpus) %>% summarise(n=n())) %>% arrange(desc(n))
 ```
 
+
 ```{r Drop tokens for which any model is missing surprisal data.}
 
 # Compute the ideal number of model--seed--training observations per token.
@@ -109,8 +110,8 @@ loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% grou
 ```{r Drop tokens for which any model has zero-valued surprisals.}
 
 to_drop_zeros = all_data %>% group_by(corpus, code) %>% filter(any(surprisal == 0)) %>% ungroup()
-loginfo(paste("Dropping", nrow(to_drop), "observations corresponding to corpus tokens which have surprisal zeros for some model."))
-loginfo(paste("Dropping", to_drop %>% group_by(corpus, code) %>% n_groups(), "tokens which have surprisal zeros for some model."))
+loginfo(paste("Dropping", nrow(to_drop_zeros), "observations corresponding to corpus tokens which have surprisal zeros for some model."))
+loginfo(paste("Dropping", to_drop_zeros %>% group_by(corpus, code) %>% n_groups(), "tokens which have surprisal zeros for some model."))
 
 all_data = all_data %>% anti_join(to_drop_zeros %>% group_by(corpus, code), by=c("corpus", "code"))
 loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% group_by(corpus, code) %>% n_groups(), " tokens) remain."))
