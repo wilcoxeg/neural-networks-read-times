@@ -650,7 +650,7 @@ all_data %>%
     facet_grid(corpus~training, scales = "free")
 ```
 
-```{r Tony Blair is the source of that right-side dip}
+```{r Tony Blair is the source of that right-side dip for RNNG too}
 all_data %>% 
   filter(corpus == "dundee", model == "rnng", training == "bllip-lg", surprisal > 20, psychometric < 300)
 ```
