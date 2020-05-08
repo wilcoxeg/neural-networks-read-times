@@ -340,7 +340,8 @@ language_model_data = read.csv("../data/model_metadata.csv") %>%
          
          # Training vocabulary usually covaries with the training corpus.
          # But BPE models share a vocabulary across training corpora.
-         training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))
+         training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
+         training_source=as.factor(str_replace(as.character(training), "-gptbpe", ""))
          ) %>%
   mutate(seed = as.factor(seed)) %>%
   select(-pid, -test_loss) %>%
@@ -568,10 +569,11 @@ model_deltas %>%
 ## Smith & Levy reproduction
 
 ```{r}
-  
 all_data %>%
   #filter(surprisal < 15, surprisal > 0) %>%
-  ggplot(aes(x=surprisal, y=psychometric, color=training)) +
+  mutate(bpe=str_detect(training, "bpe"),
+         training_source=str_replace(training, "-gptbpe", "")) %>% 
+  ggplot(aes(x=surprisal, y=psychometric, color=training_source, linetype=bpe)) +
     stat_smooth(se=T, alpha=0.5) +
     #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
     #geom_point(stat="identity", position="dodge", alpha=1, size=3) +
