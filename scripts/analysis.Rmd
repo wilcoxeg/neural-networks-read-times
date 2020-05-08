@@ -661,6 +661,48 @@ full_residuals %>% filter(corpus == "dundee", model == "rnng", training == "blli
   ggplot(aes(x=surprisal)) + geom_density()
 ```
 
+### Investigate ngram vs vanilla
+
+```{r}
+ngram_resids = full_residuals %>% filter(model == "5gram", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), resid=mean(resid))
+vanilla_resids = full_residuals %>% filter(model == "vanilla", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), resid=mean(resid))
+resids_joined = ngram_resids %>% left_join(vanilla_resids, by=c("corpus", "code"), suffix=c(".ngram", ".vanilla"))
+
+resids_joined %>% 
+  ggplot(aes(x=resid.ngram, y=resid.vanilla)) + geom_point() + geom_abline(slope=1, color="red") +
+  facet_grid(~corpus)
+
+resids_joined %>% 
+  mutate(resid_abs_diff=abs(resid.ngram - resid.vanilla)) %>% 
+  ggplot(aes(x=resid_abs_diff)) + geom_density() +
+  facet_grid(~corpus)
+
+resids_joined %>% 
+  mutate(resid_abs_diff=abs(resid.ngram - resid.vanilla)) %>% 
+  ggplot(aes(x=freq.ngram, y=resid_abs_diff)) + geom_point(alpha=0.1) + geom_smooth()
+```
+
+### Investigate gptbpe vs vanilla
+
+```{r}
+gpt_resids = full_residuals %>% filter(model == "gpt2", training == "bllip-sm-gptbpe") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), resid=mean(resid))
+vanilla_resids = full_residuals %>% filter(model == "vanilla", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), resid=mean(resid))
+resids_joined = gpt_resids %>% left_join(vanilla_resids, by=c("corpus", "code"), suffix=c(".gpt", ".vanilla"))
+
+resids_joined %>% 
+  ggplot(aes(x=resid.gpt, y=resid.vanilla)) + geom_point() + geom_abline(slope=1, color="red") +
+  facet_grid(~corpus)
+
+resids_joined %>% 
+  mutate(resid_abs_diff=abs(resid.gpt - resid.vanilla)) %>% 
+  ggplot(aes(x=resid_abs_diff)) + geom_density() +
+  facet_grid(~corpus)
+
+resids_joined %>% 
+  mutate(resid_abs_diff=abs(resid.gpt - resid.vanilla)) %>% 
+  ggplot(aes(x=freq.gpt, y=resid_abs_diff)) + geom_point(alpha=0.1) + geom_smooth()
+```
+
 ### Investigate residuals overall
 
 ```{r}
