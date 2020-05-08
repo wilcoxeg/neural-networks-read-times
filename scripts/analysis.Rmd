@@ -79,7 +79,8 @@ all_data = all_data %>%
   mutate(
     model = as.character(model),
     model = if_else(model == "gpt-2", "gpt2", model),
-    model = as.factor(model))
+    model = as.factor(model)) %>%
+filter(!(model == "gpt2" & corpus == "bnc-brown"))
 ```
 
 ```{r}
@@ -97,9 +98,13 @@ print(missing_rows %>% group_by(model, training, seed, corpus) %>% summarise(n=n
 ```{r Drop tokens for which any model is missing surprisal data.}
 
 # Compute the ideal number of model--seed--training observations per token.
-ideal_token_obs_count = all_data %>% group_by(corpus, code) %>% group_size() %>% max()
+to_drop = all_data %>%
+  group_by(corpus, code) %>% summarise(n = n()) %>% ungroup() %>%
+  group_by(corpus) %>% mutate( max_n = max(n)) %>% ungroup() %>%
+  filter(max_n != n) %>%
+  select(code, corpus)
 
-to_drop = all_data %>% group_by(corpus, code) %>% filter(n() != ideal_token_obs_count) %>% ungroup()
+#to_drop = all_data %>% group_by(corpus, code) %>% filter(n() != ideal_token_obs_count) %>% ungroup()
 loginfo(paste("Dropping", nrow(to_drop), "observations corresponding to corpus tokens which are missing observations for some model."))
 loginfo(paste("Dropping", to_drop %>% group_by(corpus, code) %>% n_groups(), "tokens which are missing observations for some model."))
 
