@@ -65,12 +65,17 @@ all_data = data %>%
          prev3_freq = lag(prev2_freq),
          prev3_code = lag(prev2_code),
          prev3_len = lag(prev2_len),
-         prev3_surp = lag(prev2_surp)) %>%
+         prev3_surp = lag(prev2_surp),
+         
+         prev4_freq = lag(prev3_freq),
+         prev4_code = lag(prev3_code),
+         prev4_len = lag(prev3_len),
+         prev4_surp = lag(prev3_surp)) %>%
   ungroup() %>%
   
   # Filter back two for the dundee corpus. Filter back 1 for all other corpora
   # NB this effectively removes all zero-surprisal rows, since early-sentence tokens don't have contiguous token history
-  filter((corpus == "dundee" & code == prev2_code + 2) | (corpus != "dundee" & code == prev_code + 1)) %>%
+  filter((corpus == "dundee" & code == prev2_code + 2) | (corpus != "dundee" & code == prev4_code + 4)) %>%
   
   select(-prev_code, -prev2_code, -prev3_code) %>%
   drop_na()
@@ -173,18 +178,18 @@ get_lm_delta_log_lik <- function(test_data, fold, baseline_env, full_env) {
 #####
 # Define regression formulae.
 # Eye-tracking regression: only use surprisal and previous surprisal; SPRT regression: use 2-back features.
-#baseline_rt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr")
-#baselie_sprt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
-#full_rt_regression = (psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20)
-                     #+ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr"))
-#full_sprt_regression = (psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20)
-                        #+ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr"))
 
-baseline_rt_regression = psychometric ~ freq + prev_freq + prev2_freq + prev3_freq + len + prev_len + prev2_len + prev3_len
-baseline_sprt_regression = psychometric ~ freq + prev_freq + len + prev_len
+#baseline_rt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
+#baselie_sprt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr") + te(prev3_freq, prev3_len, bs = "cr") + te(prev4_freq, prev4_len, bs = "cr")
 
-full_rt_regression = psychometric ~ surprisal + prev_surp + prev2_surp + prev3_surp + freq + prev_freq + prev2_freq + prev3_freq + len + prev_len + prev2_len + prev3_len
-full_sprt_regression = psychometric ~ surprisal + prev_surp + freq + prev_freq + len + prev_len
+#full_rt_regression = psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
+#full_sprt_regression = psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + s(prev3_surp, bs = "cr", k = 20) + s(prev4_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr") + te(prev3_freq, prev3_len, bs = "cr") + te(prev4_freq, prev4_len, bs = "cr")
+
+baseline_rt_regression = psychometric ~ freq + prev_freq + prev2_freq + len + prev_len + prev2_len
+baseline_sprt_regression = psychometric ~ freq + prev_freq + prev2_freq + prev3_freq + prev4_freq + len + prev_len + prev2_len + prev3_len + prev4_len
+
+full_sprt_regression = psychometric ~ surprisal + prev_surp + prev2_surp + prev3_surp + prev4_surp + freq + prev_freq + prev2_freq + prev3_freq + prev4_freq + len + prev_len + prev2_len + prev3_len + prev4_len
+full_rt_regression = psychometric ~ surprisal + prev_surp + prev2_surp + freq + prev_freq + prev2_freq + len + prev_len + prev2_len
   
 #####
 # Prepare frames/environments for storing results/objects.
@@ -197,7 +202,7 @@ log_lik_deltas = data.frame()
 #Randomly shuffle the data
 all_data<-all_data[sample(nrow(all_data)),]
 #Create K equally size folds
-K = 5
+K = 10
 folds <- cut(seq(1,nrow(all_data)),breaks=K,labels=FALSE)
 #Perform 10 fold cross validation
 
@@ -452,11 +457,12 @@ d_resid = model_deltas %>%
 d_resid %>%
   #filter(corpus != "bnc-brown") %>%
   ggplot(aes(x=resid.sg.mean, y=resid.delta.mean)) +
+    theme_bw() +
     geom_errorbar(aes(xmin=resid.sg.mean - resid.sg.sem,
                       xmax=resid.sg.mean + resid.sg.sem,
                       ymin=resid.delta.mean - resid.delta.sem,
                       ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
-    geom_smooth(method="lm", se=T) +
+    #geom_smooth(method="lm", se=T) +
     geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
@@ -498,10 +504,13 @@ do_stepwise_regression("natural-stories")
 
 ```{r}
 model_deltas %>%
-  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training_vocab)) +
+  mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
+  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training_vocab, fill = training_vocab, ymin=0)) +
+    theme_bw() +
+    geom_text(aes(x=275, y=0, label = c("//"))) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color = training_vocab)) +
     ylab(metric) +
     xlab("Test Perplexity") +
     #coord_cartesian(ylim = c(1, 16)) +
@@ -511,8 +520,11 @@ model_deltas %>%
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#888888")) +
-    facet_grid(~corpus, scales="free") +
-    #coord_cartesian(ylim = c(0, 150)) +
+    scale_shape_manual(values = c(16, 17, 15, 18)) +
+    scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
+    scale_y_continuous(limits = c(0, NA), expand = c(0,0)) +
+    facet_wrap(~corpus, scales="free") +
+    coord_cartesian(clip="off") +
     theme(axis.text=element_text(size=12),
           strip.text.x = element_text(size=12),
           legend.text=element_text(size=12),
@@ -522,80 +534,186 @@ ggsave("../images/cuny2020/ppl_loglik.png",height=4.5,width=11)
 
 ```
 
+```{r}
+
+dll_cor_test = function(df){
+  df %>%
+    summarise(
+      cor = cor.test(df$delta_test_mean, df$test_ppl)$estimate,
+      p = cor.test(df$delta_test_mean, df$test_ppl)$p.value
+    )
+}
+
+model_deltas %>%
+  filter(model != "5gram") %>%
+  group_by(training, corpus) %>%
+    mutate(n = n()) %>%
+  ungroup() %>%
+  filter(n > 2) %>%
+  group_by(training, corpus) %>%
+    do({ dll_cor_test(.) }) %>%
+  ungroup() %>%
+  arrange(corpus)
+
+```
 
 ## Effect of training data size
 
 ```{r On predictive power}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
+  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
+         bpe = as.factor(bpe)) %>%
   ggplot(aes(x=train_size, y=delta_test_mean, color=model)) +
+    theme_bw() +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), width = 0.1) +
-    geom_smooth(method="lm", se=T, alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    geom_smooth(method="lm", se=T, alpha=0.2) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=bpe)) +
     ylab(metric) +
     xlab("Log Million Training Tokens") +
     ggtitle("Training Size vs. Predictive Power") +
-    facet_grid(corpus~model, scales="free") +
+    facet_grid(.~corpus, scales="free") +
     #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
-    theme(axis.text=element_text(size=14),
-          strip.text.x = element_text(size=14),
-          legend.text=element_text(size=14),
-          axis.title=element_text(size=18),
-          legend.position = "bottom")
-#ggsave("./cogsci_images/training_loglik.png",height=5,width=6)
+    theme(axis.text=element_text(size=12),
+          strip.text.x = element_text(size=12),
+          legend.text=element_text(size=8),
+          legend.title=element_text(size=8),
+          axis.title=element_text(size=14),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.key.width = unit(0.3,"cm"),
+          legend.spacing.x = unit(0.1, 'cm'))
+ggsave("../images/cuny2020/training_loglik.png",height=5,width=5)
 ```
 
+```{r}
+
+model_cor_test = function(df){
+  df %>%
+    summarise(cor = cor.test(df$train_size, df$delta_test_mean)$estimate,
+              p = cor.test(df$train_size, df$delta_test_mean)$p.value)
+}
+
+model_deltas %>%
+  group_by(model, corpus) %>%
+    do({model_cor_test(.)}) %>%
+  ungroup() %>%
+  arrange()
+
+
+```
 
 ```{r On SG score}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
+  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
+         bpe = as.factor(bpe)) %>%
   ggplot(aes(x=train_size, y=sg_score, color=model)) +
-    geom_smooth(method="lm", se=T, alpha=0.5) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3) +
+    theme_bw() +
+    geom_smooth(method="lm", se=T, alpha=0.2) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=bpe)) +
     ylab("SG SCore") +
     xlab("Log Million Training Tokens") +
-    ggtitle("Training Size vs. Syntactic Generalization") +
+    ggtitle("Training Size vs. SG Score") +
     #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
-    facet_grid(~model, scales="free") +
-    theme(axis.text=element_text(size=14),
-          strip.text.x = element_text(size=14),
-          legend.text=element_text(size=14),
-          axis.title=element_text(size=18),
-          legend.position = "bottom")
-#ggsave("./cogsci_images/training_sg.png",height=5,width=6)
+    #facet_grid(~model, scales="free") +
+    theme(axis.text=element_text(size=12),
+          strip.text.x = element_text(size=12),
+          legend.text=element_text(size=8),
+          legend.title=element_text(size=8),
+          axis.title=element_text(size=14),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.key.width = unit(0.3,"cm"),
+          legend.spacing.x = unit(0.1, 'cm'))
+
+ggsave("../images/cuny2020/training_sg.png",height=5,width=4)
+```
+
+
+```{r}
+
+model_cor_test = function(df){
+  df %>%
+    summarise(cor = cor.test(df$train_size, df$sg_score)$estimate,
+              p = cor.test(df$train_size, df$sg_score)$p.value)
+}
+
+model_deltas %>%
+  group_by(model) %>%
+    do({model_cor_test(.)}) %>%
+  ungroup()
+
+
+
 ```
 
 ## Smith & Levy reproduction
 
 ```{r}
 all_data %>%
+  ggplot(aes(x=surprisal)) +
+  theme_bw() +
+  geom_density() +
+  facet_grid(~corpus) +
+  coord_cartesian(xlim = c(0, 21)) +
+  theme(panel.spacing = unit(2.5, "cm"))
+ggsave("../images/cuny2020/surp_corr_marginals.png",height=1.5,width=11)
+
+```
+
+```{r}
+all_data %>%
+  #filter(model == "gpt2") %>%
   #filter(surprisal < 15, surprisal > 0) %>%
+  filter(surprisal<21) %>%
   mutate(bpe=str_detect(training, "bpe"),
          training_source=str_replace(training, "-gptbpe", "")) %>% 
   ggplot(aes(x=surprisal, y=psychometric, color=training_source, linetype=bpe)) +
+    theme_bw() +
     stat_smooth(se=T, alpha=0.5) +
     #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
     #geom_point(stat="identity", position="dodge", alpha=1, size=3) +
     ylab("Processing Time (ms)") +
     xlab("Surprisal (bits)") +
     ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
-    facet_grid(corpus~model, scales = "free") +
-    # scale_color_manual(values = c("bllip-lg"="#440154FF",
-    #                           "bllip-md"="#39568CFF",
-    #                           "bllip-sm"="#1F968BFF",
-    #                           "bllip-xs"="#73D055FF",
-    #                           "bllip-lg-gptbpe"="#888888",
-    #                           "bllip-md-gptbpe"="#888888",
-    #                           "bllip-sm-gptbpe"="#888888",
-    #                           "bllip-xs-gptbpe"="#888888")) +
-    theme(axis.text=element_text(size=14),
+    facet_wrap(model ~ corpus, scales="free", ncol=3, strip.position = c("right")) +
+     scale_color_manual(values = c("bllip-lg"="#440154FF",
+                               "bllip-md"="#39568CFF",
+                               "bllip-sm"="#1F968BFF",
+                               "bllip-xs"="#73D055FF",
+                               "bllip-lg-gptbpe"="#888888",
+                               "bllip-md-gptbpe"="#888888",
+                               "bllip-sm-gptbpe"="#888888",
+                               "bllip-xs-gptbpe"="#888888")) +
+    coord_cartesian(xlim = c(0, 21)) +
+    theme(axis.text=element_text(size=10),
           axis.text.y = element_text(size = 10),
-          strip.text.x = element_text(size=14),
-          legend.text=element_text(size=14),
-          axis.title=element_text(size=18),
+          strip.text.x = element_text(size=10),
+          legend.text=element_text(size=10),
+          axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/surp_corr.png",height=4.5,width=12)
+ggsave("../images/cuny2020/surp_corr.png",height=6,width=12)
 ```
+
+
+```{r}
+
+corr_test = function(df){
+  df %>%
+    summarise(
+      cor = cor.test(df$surprisal, df$psychometric)$estimate
+    )
+}
+
+all_data %>%
+  group_by(model, training, corpus, seed) %>%
+    do({ cor = corr_test(.)}) %>%
+  ungroup()
+
+```
+
+
 
 ### Investigate vanilla
 
@@ -717,10 +835,26 @@ resids_joined %>%
 ### Investigate residuals overall
 
 ```{r}
-full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model", "training", "seed"), suffix=c(".full", ".baseline")) %>% 
-  mutate(resid_delta=resid.full - resid.baseline,
+resid_deltas = full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model", "training", "seed"), suffix=c(".full", ".baseline")) %>%
+  select(resid.baseline, resid.full, code, surprisal.full, psychometric.full, model, training, seed, corpus, len.full) %>%
+  mutate(resid.baseline.pol = if_else(resid.baseline > 0, 1, 0),
+         resid.full.pol = if_else(resid.full > 0, 1, 0)) %>%
+  mutate(resid.baseline = abs(resid.baseline),
+         resid.full = abs(resid.full)) %>%
+  mutate(resid_delta=resid.baseline - resid.full, #positive is better
          training_source=as.factor(str_replace(training, "-gptbpe", "")),
-         bpe=str_detect(training, "gptbpe")) %>% 
+         bpe=str_detect(training, "gptbpe"))
+```
+
+```{r}
+
+r = resid_deltas %>%
+  filter(resid.full.pol != resid.baseline.pol)
+
+```
+
+```{r}
+resid_deltas %>%
   ggplot(aes(x=surprisal.full, y=resid_delta, color=training)) +
     facet_grid(model~corpus) +
     geom_point(alpha=0.1, size=0.5)
@@ -729,4 +863,164 @@ full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model"
 ```{r}
 language_model_data %>% filter(model == "gpt2")
 ```
+
+```{r}
+resid_deltas %>%
+  group_by(corpus) %>%
+    mutate(psychometric = scale(psychometric.full)) %>%
+  ungroup() %>%
+  ggplot(aes(x=psychometric)) +
+    theme_bw() +
+    geom_density() +
+    geom_vline(xintercept = 0, color = "grey") +
+    facet_grid(.~corpus) +
+    #coord_cartesian(xlim = c(-2, 4)) +
+    theme(axis.title.x=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank())
+#ggsave("length.png", width = 8, height = 1)
+
+```
+
+```{r}
+
+log_lik_deltas  %>%
+#resid_deltas %>%
+  #filter(resid.full.pol == resid.baseline.pol) %>%
+  group_by(corpus) %>%
+    mutate(psychometric = scale(psychometric)) %>%
+  ungroup() %>%
+  #filter(psychometric < 4) %>%
+  #filter(len.full <= 10) %>%
+  ggplot(aes(x = psychometric, y = delta_log_lik, color = model)) +
+    theme_bw() +
+    facet_grid(. ~ corpus, scales = "free") +
+    #geom_rug(alpha = 0.003, sides = "b") +
+    geom_hline(yintercept=0, color = "blue") +
+    geom_vline(xintercept = 0, color = "grey") +
+    geom_smooth(se = T, alpha = 0.2) +
+    coord_cartesian(ylim = c(-0.1, 0.2), xlim = c(-2, 4)) +
+    theme(legend.position = "bottom",
+          strip.text.x = element_blank()) 
+ggsave( "./resid_psycho.png", height = 4, width = 8)
+
+
+```
+
+```{r}
+resid_deltas %>%
+  group_by(corpus) %>%
+    mutate(psychometric = scale(psychometric.full)) %>%
+  ungroup() %>%
+  ggplot(aes(x=len.full)) +
+    theme_bw() +
+    geom_histogram(bins = 20) +
+    geom_vline(xintercept = 0, color = "grey") +
+    facet_grid(.~corpus) +
+    coord_cartesian(xlim = c(1, 10)) +
+    theme(axis.title.x=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank())
+ggsave("length_maringals.png", width = 8, height = 1)
+```
+
+```{r}
+
+log_lik_deltas  %>%
+#resid_deltas %>%
+  #filter(resid.full.pol == resid.baseline.pol) %>%
+  group_by(corpus) %>%
+    mutate(psychometric = scale(psychometric)) %>%
+  ungroup() %>%
+  #filter(psychometric < 4) %>%
+  #filter(len.full <= 10) %>%
+  ggplot(aes(x = len, y = delta_log_lik, color = model)) +
+    theme_bw() +
+    facet_grid(. ~ corpus, scales = "free") +
+    #geom_rug(alpha = 0.003, sides = "b") +
+    geom_hline(yintercept=0, color = "blue") +
+    geom_vline(xintercept = 0, color = "grey") +
+    geom_smooth(se = T, alpha = 0.2) +
+    coord_cartesian(ylim = c(-0.02, 0.06), xlim = c(1, 10)) +
+    theme(legend.position = "bottom",
+          strip.text.x = element_blank()) 
+ggsave( "./resid_length.png", height = 4, width = 8)
+```
+
+
+```{r}
+
+word_norm = log_lik_deltas %>%
+  drop_na() %>%
+  group_by(word, corpus, model, training, seed) %>% 
+  mutate(psychoword = scale(psychometric),
+         norm_surp = scale(surprisal))
+```
+
+```{r}
+word_norm %>%
+  ggplot(aes(x=norm_surp)) +
+  facet_grid(~corpus) +
+  geom_density() +
+  coord_cartesian(xlim = c(-2, 5)) +
+  geom_vline(xintercept = 0, color = "grey") +
+  theme_bw() +
+    theme(axis.title.x=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank())
+ggsave("surp_maringals.png", width = 8, height = 1)
+
+
+```
+```{r}
+
+word_norm %>%
+  ggplot(aes(x = psychoword, y = norm_surp, color = model)) +
+    theme_bw() +
+    facet_grid(. ~ corpus, scales = "free") +
+    #geom_rug(alpha = 0.003, sides = "b") +
+    geom_hline(yintercept=0, color = "blue") +
+    geom_vline(xintercept = 0, color = "grey") +
+    geom_smooth(se = T, alpha = 0.2) +
+    #coord_cartesian(ylim = c(-0.05, 0.1), xlim = c(-2, 3)) +
+    theme(legend.position = "bottom") 
+#ggsave( "./resid_length.png", height = 4, width = 8)
+
+```
+
+```{r}
+
+word_norm %>%
+  ggplot(aes(x = norm_surp, y = delta_log_lik, color = model)) +
+    theme_bw() +
+    facet_grid( . ~ corpus, scales = "free") +
+    #geom_rug(alpha = 0.003, sides = "b") +
+    geom_hline(yintercept=0, color = "blue") +
+    geom_vline(xintercept = 0, color = "grey") +
+    geom_smooth(se = T, alpha = 0.2) +
+    coord_cartesian(ylim = c(-0.05, 0.07), xlim = c(-2, 5)) +
+    theme(legend.position = "bottom") 
+ggsave( "./norm_surp.png", height = 4, width = 8)
+
+```
+
+```{r}
+
+ngram_highsurp = word_norm %>%
+  ungroup() %>%
+  filter(corpus == "dundee", norm_surp > 2, model == "5gram") %>%
+  select(code)
+
+ngram_highsurp = ngram_highsurp$code
+
+z = word_norm %>%
+  ungroup() %>%
+  filter(! code %in% ngram_highsurp) %>%
+  filter(corpus == "dundee")
+
+write.csv(z, "ngram-ablate.csv")
+
+```
+
+
 
