@@ -44,8 +44,7 @@ Main analysis script
 
 ## Data
 
-• Download the data-directory here: https://drive.google.com/file/d/1cbZafbtfTxmECvhuFA-ZHTakdegGXjrq
-• The data can also be found on `/om2/user/ethanwil/rnn_spr` (this one should be the most up-to-date)
+• Download the data-directory here: https://drive.google.com/file/d/1Fbn-MeABFZ0GE901TjPPIQnzBpEYAgjB
 
 • For scripts to work, put the `data` directory at the top level of this directory.
 
