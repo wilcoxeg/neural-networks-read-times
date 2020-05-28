@@ -482,6 +482,14 @@ ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=11)
 ```
 
 
+```{r}
+x = d_resid %>%
+  filter(corpus == "natural-stories")
+cor.test(x$resid.delta.mean, x$resid.sg.mean)
+
+```
+
+
 ```{r Stepwise regression}
 do_stepwise_regression = function(cur_corpus) {
   regression_data = model_deltas %>%
@@ -650,6 +658,7 @@ model_deltas %>%
 
 ## Smith & Levy reproduction
 
+#### This redone so that it's unique for each model
 ```{r}
 all_data %>%
   ggplot(aes(x=surprisal)) +
@@ -662,23 +671,70 @@ ggsave("../images/cuny2020/surp_corr_marginals.png",height=1.5,width=11)
 
 ```
 
+
+```{r}
+
+fit_gams = function(df, corpus, model, training){
+  print(paste(corpus, model, training))
+  if(corpus == "dundee") {
+    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'), data = df)
+  } else {
+    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + s(prev2_surp, bs = 'cr', k = 20) + s(prev3_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr') + te(prev2_freq, prev2_len, bs = 'cr') + te(prev3_freq, prev3_len, bs = 'cr'), data = df)
+  }
+  pdf(paste("../images/cuny2020/gam_fits/", corpus, "-", model, "-", training, ".pdf", sep=""))
+  plot(m, scale = 0, rug=T)
+  dev.off()
+  plotdata = visreg(m, type="contrast", plot=F)
+  smooths = ldply(plotdata, function(part) data.frame(variable = part$meta$x, surp=part$fit[[part$meta$x]], smooth=part$fit$visregFit, lower=part$fit$visregLwr, upper=part$fit$visregUpr)) %>%
+    mutate(model = model, corpus = corpus, training = training)
+  return(smooths)
+}
+
+smooths = all_data %>%
+  group_by(training, model, corpus) %>%
+    do({ fit_gams(., unique(.$corpus), unique(.$model), unique(.$training)) }) %>%
+  ungroup()
+write.csv(smooths, "../data/gam_smooths.csv")
+
+```
+
+
+```{r}
+
+smooths %>%
+  filter(variable == "surprisal", training == "bllip-md") %>%
+    ggplot(aes(x=surp, y=smooth, color=training)) +
+      theme_bw() +
+      geom_line(size=1) +
+      geom_line(aes(y=lower), linetype="dashed") +
+      geom_line(aes(y=upper), linetype="dashed") +
+      facet_wrap(corpus~model, scales = "free")
+ggsave("../images/cuny2020/gam_surp_corr.png", height=6,width=12)
+
+
+
+```
+
+
+### Old Plotting
+
 ```{r}
 all_data %>%
-  #filter(model == "gpt2") %>%
-  #filter(surprisal < 15, surprisal > 0) %>%
+  filter(model == "gpt2", corpus == "dundee") %>%
   filter(surprisal<21) %>%
   mutate(bpe=str_detect(training, "bpe"),
          training_source=str_replace(training, "-gptbpe", "")) %>% 
   ggplot(aes(x=surprisal, y=psychometric, color=training_source, linetype=bpe)) +
     theme_bw() +
-    stat_smooth(se=T, alpha=0.5) +
+    #stat_smooth(se=T, alpha=0.5) +
+    geom_smooth(method = "gam", formula = psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr', se = F)) +
     #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
     #geom_point(stat="identity", position="dodge", alpha=1, size=3) +
     ylab("Processing Time (ms)") +
     xlab("Surprisal (bits)") +
     ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
     facet_wrap(model ~ corpus, scales="free", ncol=3, strip.position = c("right")) +
-     scale_color_manual(values = c("bllip-lg"="#440154FF",
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
                                "bllip-md"="#39568CFF",
                                "bllip-sm"="#1F968BFF",
                                "bllip-xs"="#73D055FF",
@@ -693,7 +749,7 @@ all_data %>%
           legend.text=element_text(size=10),
           axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/surp_corr.png",height=6,width=12)
+#ggsave("../images/cuny2020/surp_corr.png",height=6,width=12)
 ```
 
 
