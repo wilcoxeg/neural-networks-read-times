@@ -74,8 +74,5 @@ Main analysis script
 
 • Write images to this folder
 
-## To Do:
-• Re-run bnc brown
-
 ## Notes:
-• The Ordered Neurons, tx01, dundee, seed=0922, bllip-md and bllip-lg models didn't have any results.
+
