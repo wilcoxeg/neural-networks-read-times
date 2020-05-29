@@ -750,7 +750,14 @@ write.csv(smooths, "../data/gam_smooths.csv")
 ```{r}
 
 smooths %>%
-  mutate(training_model = paste(training, "_", model, sep="")) %>%
+  #mutate(training_model = paste(training, "_", model, sep="")) %>%
+  #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
+  #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
+  mutate(training = as.character(training),
+         training = if_else(training == "bllip-lg-gptbpe", "bpe \n bllip-lg", training),
+         training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
+         training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
+         training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
   ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model)) +
       theme_bw() +
       geom_line(size=0.5, aes(color=training_vocab)) +
@@ -763,11 +770,13 @@ smooths %>%
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
-    scale_fill_manual(values = c("bllip-lg"="#440154FF",
+      scale_fill_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
+      scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
+      ylab("Reading Time") +
       theme(legend.position = "bottom")
 ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=12)
 
