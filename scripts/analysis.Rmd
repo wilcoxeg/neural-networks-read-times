@@ -517,7 +517,7 @@ model_deltas %>%
     geom_text(aes(x=275, y=0, label = c("//"))) +
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color = training_vocab)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(shape=model, color = training_vocab)) +
     ylab(metric) +
     xlab("Test Perplexity") +
     #coord_cartesian(ylim = c(1, 16)) +
@@ -537,7 +537,7 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/ppl_loglik.png",height=4.2,width=12)
+ggsave("../images/cuny2020/ppl_loglik.png",height=5,width=12)
 
 ```
 
@@ -697,10 +697,10 @@ all_data %>%
   ggplot(aes(x=surprisal, color=model)) +
   theme_bw() +
   geom_density() +
-  facet_grid(~corpus) +
-  coord_cartesian(xlim = c(0, 21)) +
-  theme(panel.spacing = unit(2.5, "cm"))
-ggsave("../images/cuny2020/surp_corr_marginals.png",height=1.5,width=11)
+  facet_wrap(.~corpus, ncol=1, scales="free", strip.position = "right") +
+  coord_cartesian(xlim = c(0, 25)) +
+  ggtitle("Distribution of Surprisal") +
+ggsave("../images/cuny2020/surp_corr_marginals.png",height=5,width=4)
 
 ```
 
@@ -774,6 +774,44 @@ write.csv(smooths, "../data/gam_smooths.csv")
 ```{r}
 
 smooths %>%
+  mutate(corp_model = paste(corpus, model, sep=" / "),
+         corp_model = as.factor(corp_model)) %>%
+  #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
+  #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
+  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
+         training = as.character(training),
+         training = if_else(training == "bllip-lg-gptbpe", "bllip-lg", training),
+         training = if_else(training == "bllip-md-gptbpe", "bllip-md", training),
+         training = if_else(training == "bllip-sm-gptbpe", "bllip-sm", training),
+         training = if_else(training == "bllip-xs-gptbpe", "bllip-xs", training)) %>%
+  ggplot(aes(x=surprisal, y=y)) +
+      theme_bw() +
+      geom_line(size=0.5, aes(color=training, linetype=bpe)) +
+      #geom_line(aes(y=y_lower), linetype="dashed") +
+      geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.2) +
+      #geom_line(aes(y=y_upper), linetype="dashed") +
+      facet_wrap(~corp_model, ncol=4, scales="free") +
+      scale_color_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF")) +
+      scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
+      #scale_y_continuous(limits=c(200, 350)) +
+      ylab("Reading Time") +
+      ggtitle("Surprisal vs. Reading Time") +
+      theme(legend.position = "left",
+            strip.background = element_rect(fill="white"),
+            strip.placement = "outside")
+ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
+
+
+
+```
+
+
+```{r}
+
+smooths %>%
   #mutate(training_model = paste(training, "_", model, sep="")) %>%
   #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
   #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
@@ -802,7 +840,7 @@ smooths %>%
       scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
       ylab("Reading Time") +
       theme(legend.position = "bottom")
-ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=12)
+ggsave("../images/cuny2020/gam_surp_corr_full.png", height=5,width=12)
 
 
 
