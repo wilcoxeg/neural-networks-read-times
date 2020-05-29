@@ -12,6 +12,8 @@ library(lmerTest)
 library(logging)
 library(mvtnorm)
 library(mgcv)
+# Provides bootstrap resampling tools
+library(rsample)
 ```
 
 ```{r}
@@ -703,11 +705,13 @@ ggsave("../images/cuny2020/surp_corr_marginals.png",height=1.5,width=11)
 ```
 
 
-```{r}
+```{r Fit GAMs}
 k = 1.97
 
-# Fit a GAM for the given model--training--corpus group.
-fit_gams = function(df, key) {
+# Fit a GAM for a bootstrap sample.
+fit_gam_inner = function(bootstrap_sample, key) {
+  df = analysis(bootstrap_sample)
+  
   if (key$corpus == "dundee") {
     # Reading time regression: use features of current and previous word
     m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'), data = df)
@@ -723,25 +727,43 @@ fit_gams = function(df, key) {
                        prev3_surp=seq(0,20,by=0.1),
                        freq=0, prev_freq=0, prev2_freq=0, prev3_freq=0,
                        len=0, prev_len=0, prev2_len=0, prev3_len=0)
-  m.pred = predict(m, newdata=newdata, se.fit=TRUE, type="link",
-                   exclude=c("te(freq, len, bs = 'cr')","te(prev_freq, prev_len, bs = 'cr')","te(prev2_freq, prev2_len, bs = 'cr')", "te(prev3_freq, prev3_len, bs = 'cr')"))
-  
+ 
   newdata = newdata %>%
-    mutate(
-      y = m.pred$fit,
-      y_lower = m.pred$fit-k*m.pred$se.fit,
-      y_upper = m.pred$fit+k*m.pred$se.fit,
-    )
+    mutate(y=predict(m, newdata=., type="link",
+                     exclude=c("te(freq, len, bs = 'cr')",
+                               "te(prev_freq, prev_len, bs = 'cr')",
+                               "te(prev2_freq, prev2_len, bs = 'cr')",
+                               "te(prev3_freq, prev3_len, bs = 'cr')")))
   
   return(newdata)
+}
+
+# Fit a bootstrap-re-estimated GAM for the given model--corpus--training group.
+fit_gam = function(df, key, alpha=0.05) {
+  # Bootstrap-resample data
+  boot_models = df %>% bootstraps(times=100) %>% 
+    # Fit a GAM and get predictions for each sample
+    mutate(smoothed=map(splits, fit_gam_inner, key=key))
+  
+  # Extract mean and 5% and 95% percentile y-values for each surprisal value
+  result = boot_models %>% 
+    unnest(smoothed) %>% 
+    select(surprisal, y) %>% 
+    group_by(surprisal) %>% 
+      summarise(y_lower=quantile(y, alpha / 2), 
+                y_upper=quantile(y, 1 - alpha / 2),
+                y=mean(y)) %>% 
+    ungroup()
+  
+  return (result)
 }
 
 smooths = all_data %>%
   mutate(
     training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
     training_source=as.factor(str_replace(as.character(training), "-gptbpe", ""))) %>%
-  group_by(training_source, model, corpus) %>%
-    group_modify(fit_gams) %>% 
+  group_by(training_vocab, model, corpus) %>%
+    group_modify(fit_gam) %>%
   ungroup()
 write.csv(smooths, "../data/gam_smooths.csv")
 
@@ -760,13 +782,13 @@ smooths %>%
   #        training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
   #        training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
   #        training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
-  ggplot(aes(x=surprisal, y=y, fill=training_source, linetype=model)) +
+  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model)) +
       theme_bw() +
-      geom_line(size=0.5, aes(color=training_source)) +
+      geom_line(size=0.5, aes(color=training_vocab)) +
       #geom_line(aes(y=y_lower), linetype="dashed") +
       geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.3) +
       #geom_line(aes(y=y_upper), linetype="dashed") +
-      facet_grid(corpus ~ training_source + model, scales="free") +
+      facet_grid(corpus ~ training_vocab + model, scales="free") +
       scale_color_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
