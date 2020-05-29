@@ -437,34 +437,20 @@ We control for effects of perplexity by relating the residuals of a `performance
 d_resid = model_deltas %>%
   drop_na() %>%
   
-  # Residualize delta metric w.r.t PPL for each model--training--seed
   group_by(corpus) %>%
+    # Residualize delta metric w.r.t PPL for each model--training--seed within
+    # training vocabulary
     mutate(resid.delta = resid(lm(delta_test_mean ~ training_vocab:test_ppl))) %>%
+    # Residualize SG score w.r.t. PPL for each model--training--seed
+    # within training vocabulary
     mutate(resid.sg = resid(lm(sg_score ~ training_vocab:test_ppl))) %>%
-  ungroup() %>%
-  
-  # Residualize SG score w.r.t. PPL for each training vocabulary
-  #group_by(training_vocab) %>%
-    # NB no need for training:ppl interaction, since we're within-group.
-    #mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
-  #ungroup() %>%
-  # Compute summary statistics across model--training--seed--corpus.
-  group_by(model, training_vocab, corpus, seed) %>%
-    summarise(resid.delta.mean = mean(resid.delta),
-              resid.delta.sem = sd(resid.delta) / sqrt(length(resid.delta)),
-              resid.sg.mean = mean(resid.sg),
-              resid.sg.sem = sd(resid.sg) / sqrt(length(resid.sg))) %>%
   ungroup()
 
 # Now plot residual vs SG
 d_resid %>%
   #filter(corpus != "bnc-brown") %>%
-  ggplot(aes(x=resid.sg.mean, y=resid.delta.mean)) +
+  ggplot(aes(x=resid.sg, y=resid.delta)) +
     theme_bw() +
-    geom_errorbar(aes(xmin=resid.sg.mean - resid.sg.sem,
-                      xmax=resid.sg.mean + resid.sg.sem,
-                      ymin=resid.delta.mean - resid.delta.sem,
-                      ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
     scale_shape_manual(values = c(16, 17, 15, 18)) +
     geom_smooth(method="lm", se=T, alpha=0.3) +
     geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
@@ -483,14 +469,6 @@ d_resid %>%
           axis.title=element_text(size=18),
           legend.position = "right")
 ggsave("../images/cuny2020/dll_sg.png",height=4.5,width=9)
-```
-
-
-```{r}
-x = d_resid %>%
-  filter(corpus == "natural-stories")
-cor.test(x$resid.delta.mean, x$resid.sg.mean)
-
 ```
 
 
