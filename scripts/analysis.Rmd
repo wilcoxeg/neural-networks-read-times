@@ -490,6 +490,21 @@ do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
 
+```{r Sanity check: equivalence between analyses}
+# The residualized analysis and the stepwise regression analysis
+# should yield the same coefficients for the SG score variable.
+#
+# Below, we compute the slope coefficient for the SG term in the
+# residualized analyses.
+#
+# These coefficients should match those found in the stepwise
+# regression for `sg_score` above.
+d_resid %>% group_by(corpus) %>%
+  group_modify(~tidy(lm(resid.delta ~ training_vocab:test_ppl + resid.sg, data=.))
+                 %>% filter(term == "resid.sg")) %>% 
+  select(corpus, estimate)
+```
+
 ## Predictive power and perplexity
 
 ```{r}
