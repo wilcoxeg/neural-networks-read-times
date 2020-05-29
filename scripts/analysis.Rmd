@@ -12,7 +12,6 @@ library(lmerTest)
 library(logging)
 library(mvtnorm)
 library(mgcv)
-library(visreg)
 ```
 
 ```{r}
@@ -438,34 +437,20 @@ We control for effects of perplexity by relating the residuals of a `performance
 d_resid = model_deltas %>%
   drop_na() %>%
   
-  # Residualize delta metric w.r.t PPL for each model--training--seed
   group_by(corpus) %>%
+    # Residualize delta metric w.r.t PPL for each model--training--seed within
+    # training vocabulary
     mutate(resid.delta = resid(lm(delta_test_mean ~ training_vocab:test_ppl))) %>%
+    # Residualize SG score w.r.t. PPL for each model--training--seed
+    # within training vocabulary
     mutate(resid.sg = resid(lm(sg_score ~ training_vocab:test_ppl))) %>%
-  ungroup() %>%
-  
-  # Residualize SG score w.r.t. PPL for each training vocabulary
-  #group_by(training_vocab) %>%
-    # NB no need for training:ppl interaction, since we're within-group.
-    #mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
-  #ungroup() %>%
-  # Compute summary statistics across model--training--seed--corpus.
-  group_by(model, training_vocab, corpus, seed) %>%
-    summarise(resid.delta.mean = mean(resid.delta),
-              resid.delta.sem = sd(resid.delta) / sqrt(length(resid.delta)),
-              resid.sg.mean = mean(resid.sg),
-              resid.sg.sem = sd(resid.sg) / sqrt(length(resid.sg))) %>%
   ungroup()
 
 # Now plot residual vs SG
 d_resid %>%
   #filter(corpus != "bnc-brown") %>%
-  ggplot(aes(x=resid.sg.mean, y=resid.delta.mean)) +
+  ggplot(aes(x=resid.sg, y=resid.delta)) +
     theme_bw() +
-    geom_errorbar(aes(xmin=resid.sg.mean - resid.sg.sem,
-                      xmax=resid.sg.mean + resid.sg.sem,
-                      ymin=resid.delta.mean - resid.delta.sem,
-                      ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
     scale_shape_manual(values = c(16, 17, 15, 18)) +
     geom_smooth(method="lm", se=T, alpha=0.3) +
     geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
@@ -487,14 +472,6 @@ ggsave("../images/cuny2020/dll_sg.png",height=4.5,width=9)
 ```
 
 
-```{r}
-x = d_resid %>%
-  filter(corpus == "natural-stories")
-cor.test(x$resid.delta.mean, x$resid.sg.mean)
-
-```
-
-
 ```{r Stepwise regression}
 do_stepwise_regression = function(cur_corpus) {
   regression_data = model_deltas %>%
@@ -511,6 +488,21 @@ do_stepwise_regression = function(cur_corpus) {
 do_stepwise_regression("bnc-brown")
 do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
+```
+
+```{r Sanity check: equivalence between analyses}
+# The residualized analysis and the stepwise regression analysis
+# should yield the same coefficients for the SG score variable.
+#
+# Below, we compute the slope coefficient for the SG term in the
+# residualized analyses.
+#
+# These coefficients should match those found in the stepwise
+# regression for `sg_score` above.
+d_resid %>% group_by(corpus) %>%
+  group_modify(~tidy(lm(resid.delta ~ training_vocab:test_ppl + resid.sg, data=.))
+                 %>% filter(term == "resid.sg")) %>% 
+  select(corpus, estimate)
 ```
 
 ## Predictive power and perplexity
@@ -616,7 +608,7 @@ model_deltas %>%
 
 ```
 
-```{r On SG score}
+```{r PPL vs. SG score}
 model_deltas %>%
   mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
   mutate(train_size = log(train_size)) %>%
@@ -651,7 +643,7 @@ ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=3)
 ```
 
 
-```{r On SG score}
+```{r Size vs. SG score}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
@@ -714,23 +706,33 @@ ggsave("../images/cuny2020/surp_corr_marginals.png",height=5,width=4)
 ```{r}
 k = 1.97
 
-fit_gams = function(df, corpus, model, training_vocab){
-  print(paste(corpus, model, training_vocab))
-  if(corpus == "dundee") {
+# Fit a GAM for the given model--training--corpus group.
+fit_gams = function(df, key) {
+  if (key$corpus == "dundee") {
+    # Reading time regression: use features of current and previous word
     m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'), data = df)
   } else {
+    # SPRT regression: use features of current and 3 previous words
     m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + s(prev2_surp, bs = 'cr', k = 20) + s(prev3_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr') + te(prev2_freq, prev2_len, bs = 'cr') + te(prev3_freq, prev3_len, bs = 'cr'), data = df)
   }
 
-  newdata = data.frame(surprisal=seq(0,20,by=0.1),prev_surp=seq(0,20,by=0.1),prev2_surp=seq(0,20,by=0.1),prev3_surp=seq(0,20,by=0.1),freq=0,prev_freq=0,prev2_freq=0,prev3_freq=0,len=0,prev_len=0,prev2_len=0,prev3_len=0)
-  m.pred = predict(m,newdata=newdata,se.fit=TRUE, type="link", exclude=c("te(freq, len, bs = 'cr')","te(prev_freq, prev_len, bs = 'cr')","te(prev2_freq, prev2_len, bs = 'cr')", "te(prev3_freq, prev3_len, bs = 'cr')"))
+  # Produce a model fit line
+  newdata = data.frame(surprisal=seq(0,20,by=0.1),
+                       prev_surp=seq(0,20,by=0.1),
+                       prev2_surp=seq(0,20,by=0.1),
+                       prev3_surp=seq(0,20,by=0.1),
+                       freq=0, prev_freq=0, prev2_freq=0, prev3_freq=0,
+                       len=0, prev_len=0, prev2_len=0, prev3_len=0)
+  m.pred = predict(m, newdata=newdata, se.fit=TRUE, type="link",
+                   exclude=c("te(freq, len, bs = 'cr')","te(prev_freq, prev_len, bs = 'cr')","te(prev2_freq, prev2_len, bs = 'cr')", "te(prev3_freq, prev3_len, bs = 'cr')"))
+  
   newdata = newdata %>%
     mutate(
       y = m.pred$fit,
       y_lower = m.pred$fit-k*m.pred$se.fit,
       y_upper = m.pred$fit+k*m.pred$se.fit,
-      model = model, corpus = corpus, training_vocab = training_vocab
     )
+  
   return(newdata)
 }
 
@@ -738,8 +740,8 @@ smooths = all_data %>%
   mutate(
     training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
     training_source=as.factor(str_replace(as.character(training), "-gptbpe", ""))) %>%
-  group_by(training, model, corpus) %>%
-    do({ fit_gams(., unique(.$corpus), unique(.$model), unique(.$training_vocab)) }) %>%
+  group_by(training_source, model, corpus) %>%
+    group_modify(fit_gams) %>% 
   ungroup()
 write.csv(smooths, "../data/gam_smooths.csv")
 
@@ -791,18 +793,18 @@ smooths %>%
   #mutate(training_model = paste(training, "_", model, sep="")) %>%
   #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
   #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
-  mutate(training = as.character(training),
-         training = if_else(training == "bllip-lg-gptbpe", "bpe \n bllip-lg", training),
-         training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
-         training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
-         training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
-  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model)) +
+  # mutate(training = as.character(training),
+  #        training = if_else(training == "bllip-lg-gptbpe", "bpe \n bllip-lg", training),
+  #        training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
+  #        training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
+  #        training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
+  ggplot(aes(x=surprisal, y=y, fill=training_source, linetype=model)) +
       theme_bw() +
-      geom_line(size=0.5, aes(color=training_vocab)) +
+      geom_line(size=0.5, aes(color=training_source)) +
       #geom_line(aes(y=y_lower), linetype="dashed") +
       geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.3) +
       #geom_line(aes(y=y_upper), linetype="dashed") +
-      facet_grid(corpus~training+model, scales="free") +
+      facet_grid(corpus ~ training_source + model, scales="free") +
       scale_color_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
