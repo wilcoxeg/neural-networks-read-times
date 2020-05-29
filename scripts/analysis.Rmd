@@ -12,7 +12,6 @@ library(lmerTest)
 library(logging)
 library(mvtnorm)
 library(mgcv)
-library(visreg)
 ```
 
 ```{r}
