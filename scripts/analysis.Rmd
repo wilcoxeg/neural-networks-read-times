@@ -12,6 +12,7 @@ library(lmerTest)
 library(logging)
 library(mvtnorm)
 library(mgcv)
+library(visreg)
 ```
 
 ```{r}
@@ -439,20 +440,23 @@ d_resid = model_deltas %>%
   
   # Residualize delta metric w.r.t PPL for each model--training--seed
   group_by(corpus) %>%
-    mutate(resid.delta = resid(lm(delta_test_mean ~ training:test_ppl))) %>%
+    mutate(resid.delta = resid(lm(delta_test_mean ~ training_vocab:test_ppl))) %>%
+    mutate(resid.sg = resid(lm(sg_score ~ training_vocab:test_ppl))) %>%
   ungroup() %>%
   
   # Residualize SG score w.r.t. PPL for each training vocabulary
-  group_by(training_vocab) %>%
+  #group_by(training_vocab) %>%
     # NB no need for training:ppl interaction, since we're within-group.
-    mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
-  ungroup() %>%
+    #mutate(resid.sg = resid(lm(sg_score ~ test_ppl))) %>%
+  #ungroup() %>%
   # Compute summary statistics across model--training--seed--corpus.
   group_by(model, training_vocab, corpus, seed) %>%
     summarise(resid.delta.mean = mean(resid.delta),
               resid.delta.sem = sd(resid.delta) / sqrt(length(resid.delta)),
               resid.sg.mean = mean(resid.sg),
-              resid.sg.sem = sd(resid.sg) / sqrt(length(resid.sg)))
+              resid.sg.sem = sd(resid.sg) / sqrt(length(resid.sg))) %>%
+  ungroup()
+
 # Now plot residual vs SG
 d_resid %>%
   #filter(corpus != "bnc-brown") %>%
@@ -462,7 +466,8 @@ d_resid %>%
                       xmax=resid.sg.mean + resid.sg.sem,
                       ymin=resid.delta.mean - resid.delta.sem,
                       ymax=resid.delta.mean + resid.delta.sem), alpha=0.3) +
-    #geom_smooth(method="lm", se=T) +
+    scale_shape_manual(values = c(16, 17, 15, 18)) +
+    geom_smooth(method="lm", se=T, alpha=0.3) +
     geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
@@ -471,14 +476,14 @@ d_resid %>%
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
-                                  "gptbpe"="#888888")) +
+                                  "gptbpe"="#f0941f")) +
     facet_grid(.~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=11)
+ggsave("../images/cuny2020/dll_sg.png",height=4.5,width=9)
 ```
 
 
@@ -527,7 +532,7 @@ model_deltas %>%
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
-                                  "gptbpe"="#888888")) +
+                                  "gptbpe"="#f0941f")) +
     scale_shape_manual(values = c(16, 17, 15, 18)) +
     scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
     scale_y_continuous(limits = c(0, NA), expand = c(0,0)) +
@@ -538,7 +543,7 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/ppl_loglik.png",height=4.5,width=11)
+ggsave("../images/cuny2020/ppl_loglik.png",height=4.2,width=12)
 
 ```
 
@@ -591,7 +596,7 @@ model_deltas %>%
           legend.direction = "horizontal",
           legend.key.width = unit(0.3,"cm"),
           legend.spacing.x = unit(0.1, 'cm'))
-ggsave("../images/cuny2020/training_loglik.png",height=5,width=5)
+#ggsave("../images/cuny2020/training_loglik.png",height=5,width=5)
 ```
 
 ```{r}
@@ -610,6 +615,41 @@ model_deltas %>%
 
 
 ```
+
+```{r On SG score}
+model_deltas %>%
+  mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
+  mutate(train_size = log(train_size)) %>%
+  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
+         bpe = as.factor(bpe)) %>%
+  ggplot(aes(x=test_ppl, y=sg_score, color=training_vocab)) +
+    theme_bw() +
+    #geom_smooth(method="lm", se=T, alpha=0.2) +
+    geom_point(stat="identity", position="dodge", alpha=0.6, size=5, aes(shape=model)) +
+    geom_text(aes(x=275, y=0, label = c("//"))) +
+    ylab("SG SCore") +
+    xlab("Test Perplexity") +
+    ggtitle("Test PPL vs. SG Score") +
+    scale_color_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f")) +
+    scale_shape_manual(values = c(16, 17, 15, 18)) +
+    scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
+    scale_y_continuous(limits = c(0, 1), expand = c(0,0)) +
+    theme(axis.text=element_text(size=12),
+          strip.text.x = element_text(size=12),
+          legend.text=element_text(size=8),
+          legend.title=element_text(size=8),
+          axis.title=element_text(size=14),
+          legend.position = "none",
+          legend.direction = "horizontal",
+          legend.key.width = unit(0.3,"cm"),
+          legend.spacing.x = unit(0.1, 'cm'))
+ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=3)
+```
+
 
 ```{r On SG score}
 model_deltas %>%
@@ -634,8 +674,7 @@ model_deltas %>%
           legend.direction = "horizontal",
           legend.key.width = unit(0.3,"cm"),
           legend.spacing.x = unit(0.1, 'cm'))
-
-ggsave("../images/cuny2020/training_sg.png",height=5,width=4)
+#ggsave("../images/cuny2020/training_sg.png",height=5,width=4)
 ```
 
 
@@ -661,7 +700,7 @@ model_deltas %>%
 #### This redone so that it's unique for each model
 ```{r}
 all_data %>%
-  ggplot(aes(x=surprisal)) +
+  ggplot(aes(x=surprisal, color=model)) +
   theme_bw() +
   geom_density() +
   facet_grid(~corpus) +
@@ -673,28 +712,37 @@ ggsave("../images/cuny2020/surp_corr_marginals.png",height=1.5,width=11)
 
 
 ```{r}
+k = 1.97
 
-fit_gams = function(df, corpus, model, training){
-  print(paste(corpus, model, training))
+fit_gams = function(df, corpus, model, training_vocab){
+  print(paste(corpus, model, training_vocab))
   if(corpus == "dundee") {
     m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'), data = df)
   } else {
     m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + s(prev2_surp, bs = 'cr', k = 20) + s(prev3_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr') + te(prev2_freq, prev2_len, bs = 'cr') + te(prev3_freq, prev3_len, bs = 'cr'), data = df)
   }
-  pdf(paste("../images/cuny2020/gam_fits/", corpus, "-", model, "-", training, ".pdf", sep=""))
-  plot(m, scale = 0, rug=T)
-  dev.off()
-  plotdata = visreg(m, type="contrast", plot=F)
-  smooths = ldply(plotdata, function(part) data.frame(variable = part$meta$x, surp=part$fit[[part$meta$x]], smooth=part$fit$visregFit, lower=part$fit$visregLwr, upper=part$fit$visregUpr)) %>%
-    mutate(model = model, corpus = corpus, training = training)
-  return(smooths)
+
+  newdata = data.frame(surprisal=seq(0,20,by=0.1),prev_surp=seq(0,20,by=0.1),prev2_surp=seq(0,20,by=0.1),prev3_surp=seq(0,20,by=0.1),freq=0,prev_freq=0,prev2_freq=0,prev3_freq=0,len=0,prev_len=0,prev2_len=0,prev3_len=0)
+  m.pred = predict(m,newdata=newdata,se.fit=TRUE, type="link", exclude=c("te(freq, len, bs = 'cr')","te(prev_freq, prev_len, bs = 'cr')","te(prev2_freq, prev2_len, bs = 'cr')", "te(prev3_freq, prev3_len, bs = 'cr')"))
+  newdata = newdata %>%
+    mutate(
+      y = m.pred$fit,
+      y_lower = m.pred$fit-k*m.pred$se.fit,
+      y_upper = m.pred$fit+k*m.pred$se.fit,
+      model = model, corpus = corpus, training_vocab = training_vocab
+    )
+  return(newdata)
 }
 
 smooths = all_data %>%
+  mutate(
+    training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
+    training_source=as.factor(str_replace(as.character(training), "-gptbpe", ""))) %>%
   group_by(training, model, corpus) %>%
-    do({ fit_gams(., unique(.$corpus), unique(.$model), unique(.$training)) }) %>%
+    do({ fit_gams(., unique(.$corpus), unique(.$model), unique(.$training_vocab)) }) %>%
   ungroup()
 write.csv(smooths, "../data/gam_smooths.csv")
+
 
 ```
 
@@ -702,14 +750,26 @@ write.csv(smooths, "../data/gam_smooths.csv")
 ```{r}
 
 smooths %>%
-  filter(variable == "surprisal", training == "bllip-md") %>%
-    ggplot(aes(x=surp, y=smooth, color=training)) +
+  mutate(training_model = paste(training, "_", model, sep="")) %>%
+  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model)) +
       theme_bw() +
-      geom_line(size=1) +
-      geom_line(aes(y=lower), linetype="dashed") +
-      geom_line(aes(y=upper), linetype="dashed") +
-      facet_wrap(corpus~model, scales = "free")
-ggsave("../images/cuny2020/gam_surp_corr.png", height=6,width=12)
+      geom_line(size=0.5, aes(color=training_vocab)) +
+      #geom_line(aes(y=y_lower), linetype="dashed") +
+      geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.3) +
+      #geom_line(aes(y=y_upper), linetype="dashed") +
+      facet_grid(corpus~training+model, scales="free") +
+      scale_color_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f")) +
+    scale_fill_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f")) +
+      theme(legend.position = "bottom")
+ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=12)
 
 
 
