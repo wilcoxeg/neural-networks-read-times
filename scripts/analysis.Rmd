@@ -608,7 +608,7 @@ model_deltas %>%
 
 ```
 
-```{r On SG score}
+```{r PPL vs. SG score}
 model_deltas %>%
   mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
   mutate(train_size = log(train_size)) %>%
@@ -643,7 +643,7 @@ ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=3)
 ```
 
 
-```{r On SG score}
+```{r Size vs. SG score}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
