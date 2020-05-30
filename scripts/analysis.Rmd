@@ -710,32 +710,55 @@ k = 1.97
 
 # Fit a GAM for a bootstrap sample.
 fit_gam_inner = function(bootstrap_sample, key) {
-  df = analysis(bootstrap_sample)
+  # This bootstrap sample may have repeated elements. That causes a problem for
+  # mgcv, which internally cross-validates some model parameters -- it may
+  # allocate repeated elements to different folds and thus double-dip. We'll
+  # prevent this by instead providing the whole (pre-bootstrap) dataset to mgcv,
+  # and using `weights` to constrain which elements are seen, and how many
+  # times. (Repeated elements of the sample may get a weight of 2 or 3 or N,
+  # which is exactly what we want.)
+  
+  # rsplit$data contains the original entire dataset.
+  df = bootstrap_sample$data
+  # as.integer.rsplit returns the indices of the examples which are in-sample.
+  # convert this to a count vector, with dimension N (total dataset rows)
+  weights = tabulate(as.integer(bootstrap_sample), nrow(df))
   
   if (key$corpus == "dundee") {
     # Reading time regression: use features of current and previous word
-    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'), data = df)
+    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) +
+                           te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr'),
+            data = df, weights = weights)
+    
+    terms_to_predict = c("s(surprisal)", "s(prev_surp)")
   } else {
     # SPRT regression: use features of current and 3 previous words
-    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + s(prev2_surp, bs = 'cr', k = 20) + s(prev3_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr') + te(prev2_freq, prev2_len, bs = 'cr') + te(prev3_freq, prev3_len, bs = 'cr'), data = df)
+    m = gam(psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) +
+                           s(prev2_surp, bs = 'cr', k = 20) + s(prev3_surp, bs = 'cr', k = 20) +
+                           te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr') +
+                           te(prev2_freq, prev2_len, bs = 'cr') + te(prev3_freq, prev3_len, bs = 'cr'),
+            data = df, weights = weights)
+    
+    terms_to_predict = c("s(surprisal)", "s(prev_surp)",
+                         "s(prev2_surp)", "s(prev3_surp)")
   }
 
-  # Produce a model fit line
+  # Produce psychometric predictions line using just the relevant context-specific predictors.
+
   newdata = data.frame(surprisal=seq(0,20,by=0.1),
                        prev_surp=seq(0,20,by=0.1),
                        prev2_surp=seq(0,20,by=0.1),
                        prev3_surp=seq(0,20,by=0.1),
                        freq=0, prev_freq=0, prev2_freq=0, prev3_freq=0,
                        len=0, prev_len=0, prev2_len=0, prev3_len=0)
- 
-  newdata = newdata %>%
-    mutate(y=predict(m, newdata=., type="link",
-                     exclude=c("te(freq, len, bs = 'cr')",
-                               "te(prev_freq, prev_len, bs = 'cr')",
-                               "te(prev2_freq, prev2_len, bs = 'cr')",
-                               "te(prev3_freq, prev3_len, bs = 'cr')")))
   
-  return(newdata)
+  # Returns a matrix N_samples * N_terms.
+  per_term_predictions = predict(m, newdata=newdata, terms=terms_to_predict, type="terms")
+  
+  # Additive model -- sum across predictor response contributions (matrix columns).
+  predictions = rowSums(per_term_predictions)
+  
+  return(newdata %>% mutate(y=predictions))
 }
 
 # Fit a bootstrap-re-estimated GAM for the given model--corpus--training group.
