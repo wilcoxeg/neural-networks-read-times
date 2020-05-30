@@ -764,7 +764,7 @@ fit_gam_inner = function(bootstrap_sample, key) {
 # Fit a bootstrap-re-estimated GAM for the given model--corpus--training group.
 fit_gam = function(df, key, alpha=0.05) {
   # Bootstrap-resample data
-  boot_models = df %>% bootstraps(times=100) %>% 
+  boot_models = df %>% bootstraps(times=50) %>% 
     # Fit a GAM and get predictions for each sample
     mutate(smoothed=map(splits, fit_gam_inner, key=key))
   
@@ -802,29 +802,32 @@ smooths %>%
   #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
   #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
-         training = as.character(training),
-         training = if_else(training == "bllip-lg-gptbpe", "bllip-lg", training),
-         training = if_else(training == "bllip-md-gptbpe", "bllip-md", training),
-         training = if_else(training == "bllip-sm-gptbpe", "bllip-sm", training),
-         training = if_else(training == "bllip-xs-gptbpe", "bllip-xs", training)) %>%
+         # training = as.character(training),
+         # training = if_else(training == "bllip-lg-gptbpe", "bllip-lg", training),
+         # training = if_else(training == "bllip-md-gptbpe", "bllip-md", training),
+         # training = if_else(training == "bllip-sm-gptbpe", "bllip-sm", training),
+         # training = if_else(training == "bllip-xs-gptbpe", "bllip-xs", training)
+         ) %>%
   ggplot(aes(x=surprisal, y=y)) +
       theme_bw() +
-      geom_line(size=0.5, aes(color=training, linetype=bpe)) +
+      geom_line(size=0.5, aes(color=training_vocab, linetype=bpe)) +
       #geom_line(aes(y=y_lower), linetype="dashed") +
       geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.2) +
       #geom_line(aes(y=y_upper), linetype="dashed") +
       facet_wrap(~corp_model, ncol=4, scales="free") +
       scale_color_manual(values = c("bllip-lg"="#440154FF",
-                                  "bllip-md"="#39568CFF",
-                                  "bllip-sm"="#1F968BFF",
-                                  "bllip-xs"="#73D055FF")) +
+                                    "bllip-md"="#39568CFF",
+                                    "bllip-sm"="#1F968BFF",
+                                    "bllip-xs"="#73D055FF",
+                                    "gptbpe"="#f0941f")) +
       scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
       #scale_y_continuous(limits=c(200, 350)) +
-      ylab("Reading Time") +
-      ggtitle("Surprisal vs. Reading Time") +
+      ylab("Slow-down due to surprisal (ms)") +
+      ggtitle("Surprisal slow-down effects") +
       theme(legend.position = "left",
             strip.background = element_rect(fill="white"),
-            strip.placement = "outside")
+            strip.placement = "outside") +
+      labs(x="Surprisal", color="Training\nvocabulary", linetype="BPE")
 ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
 
 
@@ -843,11 +846,11 @@ smooths %>%
   #        training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
   #        training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
   #        training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
-  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model)) +
+  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model, color=training_vocab)) +
       theme_bw() +
-      geom_line(size=0.5, aes(color=training_vocab)) +
+      geom_line(size=0.5) +
       #geom_line(aes(y=y_lower), linetype="dashed") +
-      geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.3) +
+      geom_ribbon(aes(ymin=y_lower,ymax=y_upper, color=NA), alpha=0.3) +
       #geom_line(aes(y=y_upper), linetype="dashed") +
       facet_grid(corpus ~ training_vocab + model, scales="free") +
       scale_color_manual(values = c("bllip-lg"="#440154FF",
@@ -861,7 +864,8 @@ smooths %>%
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
       scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
-      ylab("Reading Time") +
+      labs(x="Surprisal", y="Slowdown due to surprisal",
+           linetype="Model architecture") +
       theme(legend.position = "bottom")
 ggsave("../images/cuny2020/gam_surp_corr_full.png", height=5,width=12)
 
