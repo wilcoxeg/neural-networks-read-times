@@ -836,16 +836,20 @@ ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
 
 
 ```{r}
+ymin = -10
+ymax = 100
 
-smooths %>%
-  #mutate(training_model = paste(training, "_", model, sep="")) %>%
-  #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
-  #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
-  # mutate(training = as.character(training),
-  #        training = if_else(training == "bllip-lg-gptbpe", "bpe \n bllip-lg", training),
-  #        training = if_else(training == "bllip-md-gptbpe", "bpe \n bllip-md", training),
-  #        training = if_else(training == "bllip-sm-gptbpe", "bpe \n bllip-sm", training),
-  #        training = if_else(training == "bllip-xs-gptbpe", "bpe \n bllip-xs", training)) %>%
+smooths %>% 
+  # Fix 0 surprisal = 0 ms
+  group_by(training_vocab, model, corpus) %>% 
+    mutate(delta=0 - y[1],
+           # Trim lower bound to make sure it gets plotted within the ylim
+           y_lower=pmax(ymin, y_lower + delta),
+           y=y + delta,
+           # Trim upper bound likewise
+           y_upper=pmin(ymax, y_upper + delta)) %>% 
+  ungroup() %>% 
+  
   ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model, color=training_vocab)) +
       theme_bw() +
       geom_line(size=0.5) +
@@ -853,20 +857,25 @@ smooths %>%
       geom_ribbon(aes(ymin=y_lower,ymax=y_upper, color=NA), alpha=0.3) +
       #geom_line(aes(y=y_upper), linetype="dashed") +
       facet_grid(corpus ~ training_vocab + model, scales="free") +
+      ylim(ymin, 100) +
       scale_color_manual(values = c("bllip-lg"="#440154FF",
-                                  "bllip-md"="#39568CFF",
-                                  "bllip-sm"="#1F968BFF",
-                                  "bllip-xs"="#73D055FF",
-                                  "gptbpe"="#f0941f")) +
+                                   "bllip-md"="#39568CFF",
+                                   "bllip-sm"="#1F968BFF",
+                                   "bllip-xs"="#73D055FF",
+                                   "gptbpe"="#f0941f")) +
       scale_fill_manual(values = c("bllip-lg"="#440154FF",
-                                  "bllip-md"="#39568CFF",
-                                  "bllip-sm"="#1F968BFF",
-                                  "bllip-xs"="#73D055FF",
-                                  "gptbpe"="#f0941f")) +
+                                   "bllip-md"="#39568CFF",
+                                   "bllip-sm"="#1F968BFF",
+                                   "bllip-xs"="#73D055FF",
+                                   "gptbpe"="#f0941f"),
+                        # No extra legend
+                        guide="none") +
       scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
+      theme(legend.position = "bottom") +
       labs(x="Surprisal", y="Slowdown due to surprisal",
-           linetype="Model architecture") +
-      theme(legend.position = "bottom")
+           linetype="Model architecture",
+           color="Training vocabulary")
+
 ggsave("../images/cuny2020/gam_surp_corr_full.png", height=5,width=12)
 
 
