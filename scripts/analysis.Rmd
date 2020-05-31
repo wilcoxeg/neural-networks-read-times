@@ -773,6 +773,8 @@ write.csv(smooths, "../data/gam_smooths.csv")
 
 ```{r}
 
+smooths = read.csv("../data/gam_smooths.csv")
+
 smooths %>%
   mutate(corp_model = paste(corpus, model, sep=" / "),
          corp_model = as.factor(corp_model)) %>%
