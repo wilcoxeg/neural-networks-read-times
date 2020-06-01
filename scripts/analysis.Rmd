@@ -564,6 +564,15 @@ model_deltas %>%
 
 ```
 
+```{r}
+lmd = model_deltas %>%
+  #filter(model != "5gram") %>%
+  mutate(training_vocab=ifelse(str_detect(as.character(training), "gptbpe"),
+                               "gptbpe", as.character(training)))
+summary(lmer(delta_test_mean ~ training_vocab:test_ppl + (1 | corpus) + (1 | model), data=lmd))
+```
+
+
 ## Effect of training data size
 
 ```{r On predictive power}
