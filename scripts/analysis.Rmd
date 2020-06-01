@@ -860,31 +860,40 @@ smooths %>%
       labs(x="Surprisal", color="Training\nvocabulary", linetype="BPE")
 ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
 
-
-
 ```
 
 
 
 ```{r}
-ymin = -10
+ymin = -40
 ymax = 100
+xmin = 0
+xmax = 20
 
-get_d_points = function(df, model, training_vocab, corpus){
+get_d_points = function(df, model, training, corpus){
   x = density(df$surprisal)$x
   y = density(df$surprisal)$y
-  return(data.frame(model, training_vocab, corpus, x, y))
+  return(data.frame(model, training, corpus, x, y))
 }
 
 density_data = all_data %>%
-  mutate(training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))) %>%
-  group_by(model, training_vocab, corpus) %>%
-    do({get_d_points(., unique(.$model), unique(.$training_vocab), unique(.$corpus))}) %>%
+  mutate(model = recode(model, vanilla="lstm")) %>%
+  group_by(model, training, corpus) %>%
+    do({get_d_points(., unique(.$model), unique(.$training), unique(.$corpus))}) %>%
   ungroup() %>%
+  mutate(training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
+         training_source=as.factor(str_replace(as.character(training), "-gptbpe", "")),
+         bpe=training_vocab == "gptbpe",) %>% 
   filter(x>0, x<20)
 
 smooths = read.csv("../data/gam_smooths.sl2013.all.csv")
 gam_smooths = smooths %>% 
+  # Plot niceties
+  # vanilla -> lstm
+  mutate(model=recode(model, vanilla="lstm")) %>% 
+  # Create BPE vs non-BPE variable
+  mutate(bpe=training_vocab == "gptbpe") %>% 
+  
   # Fix 0 surprisal = 0 ms
   group_by(training_vocab, model, corpus) %>% 
     mutate(delta=0 - y[1],
@@ -894,25 +903,26 @@ gam_smooths = smooths %>%
            # Trim upper bound likewise
            y_upper=pmin(ymax, y_upper + delta)) %>% 
   ungroup()
-  
+
+density_data %>% filter(model == "gpt2", training_source == "bllip-lg")
 
 ggplot() +
   theme_bw() +
     annotate("rect", xmin=0, xmax=20, ymin=-40,ymax=-15, fill="grey", alpha=0.3) +
-    geom_line(data = density_data, aes(x=x, y=y*200 - 40), color="grey", size = 0.5) +
-    geom_line(data = gam_smooths, aes(x=surprisal, y=y, linetype=model, color=training_vocab), size=0.5) +
-    geom_ribbon(data = gam_smooths, aes(x=surprisal, ymin=y_lower,ymax=y_upper, fill=training_vocab, color=NA), alpha=0.3) +
+    geom_line(data = density_data, aes(x=x, y=y*200 - 40, linetype=bpe), color="grey") + #, size = 0.1) +# 0.5) +
+    geom_line(data = gam_smooths, aes(x=surprisal, y=y, linetype=bpe, color=training_source), size=0.5) +
+    geom_ribbon(data = gam_smooths, aes(x=surprisal, ymin=y_lower, ymax=y_upper, fill=training_source, color=NA, linetype=bpe), alpha=0.3) +
     facet_grid(corpus ~ training_source + model, scales="free") +
-    ylim(-40, 100) +
+    ylim(ymin, ymax) +
     coord_cartesian(xlim=c(0,20)) +
     scale_color_manual(values = c("bllip-lg"="#440154FF", "bllip-md"="#39568CFF", "bllip-sm"="#1F968BFF", "bllip-xs"="#73D055FF", "gptbpe"="#f0941f")) +
     scale_fill_manual(values = c("bllip-lg"="#440154FF", "bllip-md"="#39568CFF",  "bllip-sm"="#1F968BFF",  "bllip-xs"="#73D055FF", "gptbpe"="#f0941f"), guide="none") +
     scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
     theme(legend.position = "bottom") +
-           labs(x="Surprisal (bits)", y="Slowdown due to surprisal",
-           linetype="Model architecture",
-           color="Training vocabulary")
-ggsave("../images/cuny2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
+    labs(x="Surprisal (bits)", y="Slowdown due to surprisal (ms)",
+         linetype="BPE",
+         color="Training data")
+ ggsave("../images/cuny2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
 
 
 ```
