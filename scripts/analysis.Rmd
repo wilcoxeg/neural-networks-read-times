@@ -448,29 +448,36 @@ d_resid = model_deltas %>%
     mutate(resid.sg = resid(lm(sg_score ~ training_vocab:test_ppl))) %>%
   ungroup()
 
+
 # Now plot residual vs SG
 d_resid %>%
   #filter(corpus != "bnc-brown") %>%
   ggplot(aes(x=resid.sg, y=resid.delta)) +
     theme_bw() +
-    scale_shape_manual(values = c(16, 17, 15, 18)) +
+    scale_shape_manual(values = c(21, 24, 22, 23)) +
     geom_smooth(method="lm", se=T, alpha=0.3) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=4, aes(shape=model, color=training_vocab)) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(shape = model, fill=training_source, color = training_vocab, stroke = 1)) +
     ylab(paste("Residual", metric)) +
     xlab("Residual Syntax Generalization Score") +
     ggtitle("Syntactic Generalization vs. Predictive Power") +
+    labs(color="training") + 
     scale_color_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
+  scale_fill_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f"), guide=F) +
     facet_grid(.~corpus, scales="free") +
     theme(axis.text=element_text(size=14),
           strip.text.x = element_text(size=14),
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-ggsave("../images/cuny2020/dll_sg.png",height=4.5,width=9)
+ggsave("../images/cuny2020/dll_sg.pdf",height=4.5,width=9, device = cairo_pdf)
 ```
 
 
@@ -510,24 +517,32 @@ d_resid %>% group_by(corpus) %>%
 ## Predictive power and perplexity
 
 ```{r}
+
 model_deltas %>%
-  mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
-  ggplot(aes(x=test_ppl, y=delta_test_mean, color=training_vocab, fill = training_vocab, ymin=0)) +
+  mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl),
+         bpe = if_else(training_vocab == "gptbpe", "yes", "no")) %>%
+  ggplot(aes(x=test_ppl, y=delta_test_mean, shape = model, ymin=0)) +
     theme_bw() +
     geom_text(aes(x=275, y=0, label = c("//"))) +
-    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), alpha=0.4) +
+    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem, color=training_vocab), alpha=0.4) +
     #geom_smooth(method="lm", se=F) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(shape=model, color = training_vocab)) +
-    ylab(metric) +
+    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(fill=training_source, color = training_vocab, stroke = 1)) +
+    ylab("ΔLogLik per token") +
     xlab("Test Perplexity") +
     #coord_cartesian(ylim = c(1, 16)) +
     ggtitle("Test Perplexity vs. Predictive Power") +
+    labs(color="training") + 
     scale_color_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
-    scale_shape_manual(values = c(16, 17, 15, 18)) +
+  scale_fill_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f"), guide=F) +
+    scale_shape_manual(values = c(21, 24, 22, 23)) +
     scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
     scale_y_continuous(limits = c(0, NA), expand = c(0,0)) +
     facet_wrap(~corpus, scales="free") +
@@ -537,11 +552,11 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/ppl_loglik.png",height=5,width=12)
+ggsave("../images/cuny2020/ppl_loglik.pdf",height=5,width=12, device = cairo_pdf)
 
 ```
 
-```{r}
+```{r, eval=False}
 
 dll_cor_test = function(df){
   df %>%
@@ -575,7 +590,7 @@ summary(lmer(delta_test_mean ~ training_vocab:test_ppl + (1 | corpus) + (1 | mod
 
 ## Effect of training data size
 
-```{r On predictive power}
+```{r On predictive power, eval=False}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
@@ -585,7 +600,7 @@ model_deltas %>%
     geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), width = 0.1) +
     geom_smooth(method="lm", se=T, alpha=0.2) +
     geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=bpe)) +
-    ylab(metric) +
+    ylab("ΔLogLik per token) +
     xlab("Log Million Training Tokens") +
     ggtitle("Training Size vs. Predictive Power") +
     facet_grid(.~corpus, scales="free") +
@@ -602,7 +617,7 @@ model_deltas %>%
 #ggsave("../images/cuny2020/training_loglik.png",height=5,width=5)
 ```
 
-```{r}
+```{r, eval=False}
 
 model_cor_test = function(df){
   df %>%
@@ -620,25 +635,33 @@ model_deltas %>%
 ```
 
 ```{r PPL vs. SG score}
+
 model_deltas %>%
   mutate(test_ppl = if_else(test_ppl > 500, 329.9, test_ppl)) %>%
   mutate(train_size = log(train_size)) %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
          bpe = as.factor(bpe)) %>%
-  ggplot(aes(x=test_ppl, y=sg_score, color=training_vocab)) +
+  ggplot(aes(x=test_ppl, y=sg_score)) +
     theme_bw() +
-    #geom_smooth(method="lm", se=T, alpha=0.2) +
-    geom_point(stat="identity", position="dodge", alpha=0.6, size=5, aes(shape=model)) +
+    geom_hline(yintercept = 0.28, linetype = "dashed", color="gray") +
+    geom_text(aes(x=240, y=0.3), label="random", color="gray") +
+    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(shape = model, fill=training_source, color = training_vocab, stroke = 1)) +
     geom_text(aes(x=275, y=0, label = c("//"))) +
     ylab("SG SCore") +
     xlab("Test Perplexity") +
     ggtitle("Test PPL vs. SG Score") +
+    labs(color="training") + 
     scale_color_manual(values = c("bllip-lg"="#440154FF",
                                   "bllip-md"="#39568CFF",
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f")) +
-    scale_shape_manual(values = c(16, 17, 15, 18)) +
+    scale_fill_manual(values = c("bllip-lg"="#440154FF",
+                                  "bllip-md"="#39568CFF",
+                                  "bllip-sm"="#1F968BFF",
+                                  "bllip-xs"="#73D055FF",
+                                  "gptbpe"="#f0941f"), guide=F) +
+    scale_shape_manual(values = c(21, 24, 22, 23)) +
     scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
     scale_y_continuous(limits = c(0, 1), expand = c(0,0)) +
     theme(axis.text=element_text(size=12),
@@ -650,11 +673,11 @@ model_deltas %>%
           legend.direction = "horizontal",
           legend.key.width = unit(0.3,"cm"),
           legend.spacing.x = unit(0.1, 'cm'))
-ggsave("../images/cuny2020/ppl_sg.png",height=4.5,width=3)
+ggsave("../images/cuny2020/ppl_sg.pdf",height=4.5,width=3, device = cairo_pdf)
 ```
 
 
-```{r Size vs. SG score}
+```{r Size vs. SG score, eval=False}
 model_deltas %>%
   mutate(train_size = log(train_size)) %>%
   mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
@@ -681,7 +704,7 @@ model_deltas %>%
 ```
 
 
-```{r}
+```{r, eval=False}
 
 model_cor_test = function(df){
   df %>%
@@ -701,7 +724,7 @@ model_deltas %>%
 ## Smith & Levy reproduction
 
 #### This redone so that it's unique for each model
-```{r}
+```{r, eval=False}
 all_data %>%
   ggplot(aes(x=surprisal, color=model)) +
   theme_bw() +
@@ -713,8 +736,7 @@ ggsave("../images/cuny2020/surp_corr_marginals.png",height=5,width=4)
 
 ```
 
-
-```{r Fit GAMs}
+```{r Fit GAMs, eval=False}
 k = 1.97
 
 # Fit a GAM for a bootstrap sample.
@@ -802,8 +824,7 @@ write.csv(smooths, "../data/gam_smooths.csv")
 
 ```
 
-
-```{r}
+```{r, eval=False}
 
 smooths %>%
   mutate(corp_model = paste(corpus, model, sep=" / "),
@@ -844,11 +865,26 @@ ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
 ```
 
 
+
 ```{r}
 ymin = -10
 ymax = 100
 
-smooths %>% 
+get_d_points = function(df, model, training_vocab, corpus){
+  x = density(df$surprisal)$x
+  y = density(df$surprisal)$y
+  return(data.frame(model, training_vocab, corpus, x, y))
+}
+
+density_data = all_data %>%
+  mutate(training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training)))) %>%
+  group_by(model, training_vocab, corpus) %>%
+    do({get_d_points(., unique(.$model), unique(.$training_vocab), unique(.$corpus))}) %>%
+  ungroup() %>%
+  filter(x>0, x<20)
+
+smooths = read.csv("../data/gam_smooths.sl2013.all.csv")
+gam_smooths = smooths %>% 
   # Fix 0 surprisal = 0 ms
   group_by(training_vocab, model, corpus) %>% 
     mutate(delta=0 - y[1],
@@ -857,402 +893,33 @@ smooths %>%
            y=y + delta,
            # Trim upper bound likewise
            y_upper=pmin(ymax, y_upper + delta)) %>% 
-  ungroup() %>% 
+  ungroup()
   
-  ggplot(aes(x=surprisal, y=y, fill=training_vocab, linetype=model, color=training_vocab)) +
-      theme_bw() +
-      geom_line(size=0.5) +
-      #geom_line(aes(y=y_lower), linetype="dashed") +
-      geom_ribbon(aes(ymin=y_lower,ymax=y_upper, color=NA), alpha=0.3) +
-      #geom_line(aes(y=y_upper), linetype="dashed") +
-      facet_grid(corpus ~ training_vocab + model, scales="free") +
-      ylim(ymin, 100) +
-      scale_color_manual(values = c("bllip-lg"="#440154FF",
-                                   "bllip-md"="#39568CFF",
-                                   "bllip-sm"="#1F968BFF",
-                                   "bllip-xs"="#73D055FF",
-                                   "gptbpe"="#f0941f")) +
-      scale_fill_manual(values = c("bllip-lg"="#440154FF",
-                                   "bllip-md"="#39568CFF",
-                                   "bllip-sm"="#1F968BFF",
-                                   "bllip-xs"="#73D055FF",
-                                   "gptbpe"="#f0941f"),
-                        # No extra legend
-                        guide="none") +
-      scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
-      theme(legend.position = "bottom") +
-      labs(x="Surprisal", y="Slowdown due to surprisal",
+
+ggplot() +
+  theme_bw() +
+    annotate("rect", xmin=0, xmax=20, ymin=-40,ymax=-15, fill="grey", alpha=0.3) +
+    geom_line(data = density_data, aes(x=x, y=y*200 - 40), color="grey", size = 0.5) +
+    geom_line(data = gam_smooths, aes(x=surprisal, y=y, linetype=model, color=training_vocab), size=0.5) +
+    geom_ribbon(data = gam_smooths, aes(x=surprisal, ymin=y_lower,ymax=y_upper, fill=training_vocab, color=NA), alpha=0.3) +
+    facet_grid(corpus ~ training_source + model, scales="free") +
+    ylim(-40, 100) +
+    coord_cartesian(xlim=c(0,20)) +
+    scale_color_manual(values = c("bllip-lg"="#440154FF", "bllip-md"="#39568CFF", "bllip-sm"="#1F968BFF", "bllip-xs"="#73D055FF", "gptbpe"="#f0941f")) +
+    scale_fill_manual(values = c("bllip-lg"="#440154FF", "bllip-md"="#39568CFF",  "bllip-sm"="#1F968BFF",  "bllip-xs"="#73D055FF", "gptbpe"="#f0941f"), guide="none") +
+    scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
+    theme(legend.position = "bottom") +
+           labs(x="Surprisal (bits)", y="Slowdown due to surprisal",
            linetype="Model architecture",
            color="Training vocabulary")
-
-ggsave("../images/cuny2020/gam_surp_corr_full.png", height=5,width=12)
-
+ggsave("../images/cuny2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
 
 
 ```
 
 
-### Old Plotting
-
-```{r}
-all_data %>%
-  filter(model == "gpt2", corpus == "dundee") %>%
-  filter(surprisal<21) %>%
-  mutate(bpe=str_detect(training, "bpe"),
-         training_source=str_replace(training, "-gptbpe", "")) %>% 
-  ggplot(aes(x=surprisal, y=psychometric, color=training_source, linetype=bpe)) +
-    theme_bw() +
-    #stat_smooth(se=T, alpha=0.5) +
-    geom_smooth(method = "gam", formula = psychometric ~ s(surprisal, bs = 'cr', k = 20) + s(prev_surp, bs = 'cr', k = 20) + te(freq, len, bs = 'cr') + te(prev_freq, prev_len, bs = 'cr', se = F)) +
-    #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
-    #geom_point(stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Processing Time (ms)") +
-    xlab("Surprisal (bits)") +
-    ggtitle("Surprisal vs. Reading Time / Gaze Duration") +
-    facet_wrap(model ~ corpus, scales="free", ncol=3, strip.position = c("right")) +
-    scale_color_manual(values = c("bllip-lg"="#440154FF",
-                               "bllip-md"="#39568CFF",
-                               "bllip-sm"="#1F968BFF",
-                               "bllip-xs"="#73D055FF",
-                               "bllip-lg-gptbpe"="#888888",
-                               "bllip-md-gptbpe"="#888888",
-                               "bllip-sm-gptbpe"="#888888",
-                               "bllip-xs-gptbpe"="#888888")) +
-    coord_cartesian(xlim = c(0, 21)) +
-    theme(axis.text=element_text(size=10),
-          axis.text.y = element_text(size = 10),
-          strip.text.x = element_text(size=10),
-          legend.text=element_text(size=10),
-          axis.title=element_text(size=12),
-          legend.position = "right")
-#ggsave("../images/cuny2020/surp_corr.png",height=6,width=12)
-```
 
 
-```{r}
-
-corr_test = function(df){
-  df %>%
-    summarise(
-      cor = cor.test(df$surprisal, df$psychometric)$estimate
-    )
-}
-
-all_data %>%
-  group_by(model, training, corpus, seed) %>%
-    do({ cor = corr_test(.)}) %>%
-  ungroup()
-
-```
-
-
-
-### Investigate vanilla
-
-```{r}
-all_data %>%
-  #filter(surprisal < 15, surprisal > 0) %>%
-  filter(model == "vanilla") %>% 
-  ggplot(aes(x=surprisal, y=psychometric)) +
-    #stat_smooth(se=T, alpha=0.5) +
-    #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
-    geom_point(alpha=0.1) + #stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Processing Time (ms)") +
-    xlab("Surprisal (bits)") +
-    ggtitle("Surprisal vs. Reading Time / Gaze Duration: Vanilla") +
-    facet_grid(corpus~training, scales = "free")
-    # scale_color_manual(values = c("bllip-lg"="#440154FF",
-    #                           "bllip-md"="#39568CFF",
-    #                           "bllip-sm"="#1F968BFF",
-    #                           "bllip-xs"="#73D055FF",
-    #                           "bllip-lg-gptbpe"="#888888",
-    #                           "bllip-md-gptbpe"="#888888",
-    #                           "bllip-sm-gptbpe"="#888888",
-    #                           "bllip-xs-gptbpe"="#888888"))
-```
-
-```{r Tony Blair is the source of that right-side dip}
-all_data %>% 
-  filter(corpus == "dundee", model == "vanilla", training == "bllip-lg", surprisal > 20, psychometric < 300)
-```
-
-```{r}
-print(full_residuals %>% filter(corpus == "dundee", model == "vanilla", training == "bllip-lg") %>% arrange(desc(resid)))
-full_residuals %>% filter(corpus == "dundee", model == "vanilla", training == "bllip-lg") %>% arrange(desc(resid)) %>% filter(resid > 150) %>% 
-  ggplot(aes(x=surprisal)) + geom_density()
-```
-
-
-### Investigate RNNG
-
-```{r}
-all_data %>%
-  #filter(surprisal < 15, surprisal > 0) %>%
-  filter(model == "rnng") %>% 
-  ggplot(aes(x=surprisal, y=psychometric)) +
-    #stat_smooth(se=T, alpha=0.5) +
-    #geom_errorbar(color="black", width=.2, position=position_dodge(width=.9), alpha=0.3) +
-    geom_point(alpha=0.1) + #stat="identity", position="dodge", alpha=1, size=3) +
-    ylab("Processing Time (ms)") +
-    xlab("Surprisal (bits)") +
-    ggtitle("Surprisal vs. Reading Time / Gaze Duration: RNNG") +
-    facet_grid(corpus~training, scales = "free")
-```
-
-```{r Tony Blair is the source of that right-side dip for RNNG too}
-all_data %>% 
-  filter(corpus == "dundee", model == "rnng", training == "bllip-lg", surprisal > 20, psychometric < 300)
-```
-
-```{r}
-print(full_residuals %>% filter(corpus == "dundee", model == "rnng", training == "bllip-lg") %>% arrange(desc(resid)))
-full_residuals %>% filter(corpus == "dundee", model == "rnng", training == "bllip-lg") %>% arrange(desc(resid)) %>% filter(resid > 150) %>% 
-  ggplot(aes(x=surprisal)) + geom_density()
-```
-
-### Investigate ngram vs vanilla
-
-```{r}
-ngram_resids = full_residuals %>% filter(model == "5gram", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), surprisal=mean(surprisal), resid=mean(resid))
-vanilla_resids = full_residuals %>% filter(model == "vanilla", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), surprisal=mean(surprisal),  resid=mean(resid))
-resids_joined = ngram_resids %>% left_join(vanilla_resids, by=c("corpus", "code"), suffix=c(".ngram", ".vanilla"))
-
-resids_joined %>% 
-  ggplot(aes(x=resid.ngram, y=resid.vanilla)) + geom_point() + geom_abline(slope=1, color="red") +
-  facet_grid(~corpus)
-
-resids_joined %>% 
-  mutate(resid_diff=resid.ngram - resid.vanilla) %>% 
-  ggplot(aes(x=resid_diff)) + geom_density() +
-  facet_grid(~corpus)
-
-resids_joined %>% 
-  mutate(resid_diff=abs(resid.ngram) - abs(resid.vanilla),
-         big=resid_diff < -10) %>% 
-  ggplot(aes(x=surprisal.ngram, color=big)) + geom_density() + facet_grid(~corpus) +
-  ggtitle("ngram surprisal of high-improvement tokens (relative to vanilla)")
-
-resids_joined %>% 
-  mutate(resid_abs_diff=abs(resid.ngram - resid.vanilla)) %>% 
-  ggplot(aes(x=freq.ngram, y=resid_abs_diff)) + geom_point(alpha=0.1) + geom_smooth()
-```
-
-### Investigate gptbpe vs vanilla
-
-```{r}
-gpt_resids = full_residuals %>% filter(model == "gpt2", training == "bllip-sm-gptbpe") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), surprisal=mean(surprisal),  resid=mean(resid))
-vanilla_resids = full_residuals %>% filter(model == "vanilla", training == "bllip-sm") %>% group_by(corpus, code) %>% summarise(freq=mean(freq), psychometric=mean(psychometric), surprisal=mean(surprisal),  resid=mean(resid))
-resids_joined = gpt_resids %>% left_join(vanilla_resids, by=c("corpus", "code"), suffix=c(".gpt", ".vanilla"))
-
-resids_joined %>% 
-  ggplot(aes(x=resid.gpt, y=resid.vanilla)) + geom_point() + geom_abline(slope=1, color="red") +
-  facet_grid(~corpus)
-
-resids_joined %>% 
-  mutate(resid_diff=resid.gpt - resid.vanilla) %>% 
-  ggplot(aes(x=resid_diff)) + geom_density() +
-  facet_grid(~corpus)
-
-resids_joined %>% 
-  mutate(resid_diff=abs(resid.gpt) - abs(resid.vanilla),
-         big=resid_diff < -10) %>% 
-  ggplot(aes(x=surprisal.gpt, color=big)) + geom_density() + facet_grid(~corpus) +
-  ggtitle("gpt surprisal of high-improvement tokens (relative to vanilla)")
-
-resids_joined %>% 
-  mutate(resid_abs_diff=abs(resid.gpt - resid.vanilla)) %>% 
-  ggplot(aes(x=freq.gpt, y=resid_abs_diff)) + geom_point(alpha=0.1) + geom_smooth()
-```
-
-### Investigate residuals overall
-
-```{r}
-resid_deltas = full_residuals %>% right_join(baseline_residuals, by=c("corpus", "code", "model", "training", "seed"), suffix=c(".full", ".baseline")) %>%
-  select(resid.baseline, resid.full, code, surprisal.full, psychometric.full, model, training, seed, corpus, len.full) %>%
-  mutate(resid.baseline.pol = if_else(resid.baseline > 0, 1, 0),
-         resid.full.pol = if_else(resid.full > 0, 1, 0)) %>%
-  mutate(resid.baseline = abs(resid.baseline),
-         resid.full = abs(resid.full)) %>%
-  mutate(resid_delta=resid.baseline - resid.full, #positive is better
-         training_source=as.factor(str_replace(training, "-gptbpe", "")),
-         bpe=str_detect(training, "gptbpe"))
-```
-
-```{r}
-
-r = resid_deltas %>%
-  filter(resid.full.pol != resid.baseline.pol)
-
-```
-
-```{r}
-resid_deltas %>%
-  ggplot(aes(x=surprisal.full, y=resid_delta, color=training)) +
-    facet_grid(model~corpus) +
-    geom_point(alpha=0.1, size=0.5)
-```
-
-```{r}
-language_model_data %>% filter(model == "gpt2")
-```
-
-```{r}
-resid_deltas %>%
-  group_by(corpus) %>%
-    mutate(psychometric = scale(psychometric.full)) %>%
-  ungroup() %>%
-  ggplot(aes(x=psychometric)) +
-    theme_bw() +
-    geom_density() +
-    geom_vline(xintercept = 0, color = "grey") +
-    facet_grid(.~corpus) +
-    #coord_cartesian(xlim = c(-2, 4)) +
-    theme(axis.title.x=element_blank(),
-          axis.text.x=element_blank(),
-          axis.ticks.x=element_blank())
-#ggsave("length.png", width = 8, height = 1)
-
-```
-
-```{r}
-
-log_lik_deltas  %>%
-#resid_deltas %>%
-  #filter(resid.full.pol == resid.baseline.pol) %>%
-  group_by(corpus) %>%
-    mutate(psychometric = scale(psychometric)) %>%
-  ungroup() %>%
-  #filter(psychometric < 4) %>%
-  #filter(len.full <= 10) %>%
-  ggplot(aes(x = psychometric, y = delta_log_lik, color = model)) +
-    theme_bw() +
-    facet_grid(. ~ corpus, scales = "free") +
-    #geom_rug(alpha = 0.003, sides = "b") +
-    geom_hline(yintercept=0, color = "blue") +
-    geom_vline(xintercept = 0, color = "grey") +
-    geom_smooth(se = T, alpha = 0.2) +
-    coord_cartesian(ylim = c(-0.1, 0.2), xlim = c(-2, 4)) +
-    theme(legend.position = "bottom",
-          strip.text.x = element_blank()) 
-ggsave( "./resid_psycho.png", height = 4, width = 8)
-
-
-```
-
-```{r}
-resid_deltas %>%
-  group_by(corpus) %>%
-    mutate(psychometric = scale(psychometric.full)) %>%
-  ungroup() %>%
-  ggplot(aes(x=len.full)) +
-    theme_bw() +
-    geom_histogram(bins = 20) +
-    geom_vline(xintercept = 0, color = "grey") +
-    facet_grid(.~corpus) +
-    coord_cartesian(xlim = c(1, 10)) +
-    theme(axis.title.x=element_blank(),
-          axis.text.x=element_blank(),
-          axis.ticks.x=element_blank())
-ggsave("length_maringals.png", width = 8, height = 1)
-```
-
-```{r}
-
-log_lik_deltas  %>%
-#resid_deltas %>%
-  #filter(resid.full.pol == resid.baseline.pol) %>%
-  group_by(corpus) %>%
-    mutate(psychometric = scale(psychometric)) %>%
-  ungroup() %>%
-  #filter(psychometric < 4) %>%
-  #filter(len.full <= 10) %>%
-  ggplot(aes(x = len, y = delta_log_lik, color = model)) +
-    theme_bw() +
-    facet_grid(. ~ corpus, scales = "free") +
-    #geom_rug(alpha = 0.003, sides = "b") +
-    geom_hline(yintercept=0, color = "blue") +
-    geom_vline(xintercept = 0, color = "grey") +
-    geom_smooth(se = T, alpha = 0.2) +
-    coord_cartesian(ylim = c(-0.02, 0.06), xlim = c(1, 10)) +
-    theme(legend.position = "bottom",
-          strip.text.x = element_blank()) 
-ggsave( "./resid_length.png", height = 4, width = 8)
-```
-
-
-```{r}
-
-word_norm = log_lik_deltas %>%
-  drop_na() %>%
-  group_by(word, corpus, model, training, seed) %>% 
-  mutate(psychoword = scale(psychometric),
-         norm_surp = scale(surprisal))
-```
-
-```{r}
-word_norm %>%
-  ggplot(aes(x=norm_surp)) +
-  facet_grid(~corpus) +
-  geom_density() +
-  coord_cartesian(xlim = c(-2, 5)) +
-  geom_vline(xintercept = 0, color = "grey") +
-  theme_bw() +
-    theme(axis.title.x=element_blank(),
-          axis.text.x=element_blank(),
-          axis.ticks.x=element_blank())
-ggsave("surp_maringals.png", width = 8, height = 1)
-
-
-```
-```{r}
-
-word_norm %>%
-  ggplot(aes(x = psychoword, y = norm_surp, color = model)) +
-    theme_bw() +
-    facet_grid(. ~ corpus, scales = "free") +
-    #geom_rug(alpha = 0.003, sides = "b") +
-    geom_hline(yintercept=0, color = "blue") +
-    geom_vline(xintercept = 0, color = "grey") +
-    geom_smooth(se = T, alpha = 0.2) +
-    #coord_cartesian(ylim = c(-0.05, 0.1), xlim = c(-2, 3)) +
-    theme(legend.position = "bottom") 
-#ggsave( "./resid_length.png", height = 4, width = 8)
-
-```
-
-```{r}
-
-word_norm %>%
-  ggplot(aes(x = norm_surp, y = delta_log_lik, color = model)) +
-    theme_bw() +
-    facet_grid( . ~ corpus, scales = "free") +
-    #geom_rug(alpha = 0.003, sides = "b") +
-    geom_hline(yintercept=0, color = "blue") +
-    geom_vline(xintercept = 0, color = "grey") +
-    geom_smooth(se = T, alpha = 0.2) +
-    coord_cartesian(ylim = c(-0.05, 0.07), xlim = c(-2, 5)) +
-    theme(legend.position = "bottom") 
-ggsave( "./norm_surp.png", height = 4, width = 8)
-
-```
-
-```{r}
-
-ngram_highsurp = word_norm %>%
-  ungroup() %>%
-  filter(corpus == "dundee", norm_surp > 2, model == "5gram") %>%
-  select(code)
-
-ngram_highsurp = ngram_highsurp$code
-
-z = word_norm %>%
-  ungroup() %>%
-  filter(! code %in% ngram_highsurp) %>%
-  filter(corpus == "dundee")
-
-write.csv(z, "ngram-ablate.csv")
-
-```
 
 
 
