@@ -794,7 +794,7 @@ smooths = all_data %>%
   mutate(
     training_vocab=as.factor(ifelse(str_detect(training, "gptbpe"), "gptbpe", as.character(training))),
     training_source=as.factor(str_replace(as.character(training), "-gptbpe", ""))) %>%
-  group_by(training_vocab, model, corpus) %>%
+  group_by(training_vocab, training_source, model, corpus) %>%
     group_modify(fit_gam) %>%
   ungroup()
 write.csv(smooths, "../data/gam_smooths.csv")
