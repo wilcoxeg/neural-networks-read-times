@@ -645,9 +645,9 @@ model_deltas %>%
     theme_bw() +
     geom_hline(yintercept = 0.28, linetype = "dashed", color="gray") +
     geom_text(aes(x=240, y=0.3), label="random", color="gray") +
-    geom_point(stat="identity", position="dodge", alpha=1, size=5, aes(shape = model, fill=training_source, color = training_vocab, stroke = 1)) +
+    geom_point(stat="identity", position="dodge", alpha=0.3, size=4, aes(shape = model, fill=training_source, color = training_vocab, stroke = 1)) +
     geom_text(aes(x=275, y=0, label = c("//"))) +
-    ylab("SG SCore") +
+    ylab("SG Score") +
     xlab("Test Perplexity") +
     ggtitle("Test PPL vs. SG Score") +
     labs(color="training") + 
@@ -661,7 +661,7 @@ model_deltas %>%
                                   "bllip-sm"="#1F968BFF",
                                   "bllip-xs"="#73D055FF",
                                   "gptbpe"="#f0941f"), guide=F) +
-    scale_shape_manual(values = c(21, 24, 22, 23)) +
+    scale_shape_manual(values = c("5gram"=21, vanilla=22, gpt2=24, rnng=23)) +
     scale_x_continuous(labels=c(0, 50, 100, 150, 200, 250, 500 ,550), breaks=c(0, 50, 100, 150, 200, 250, 300, 350), minor_breaks = NULL) +
     scale_y_continuous(limits = c(0, 1), expand = c(0,0)) +
     theme(axis.text=element_text(size=12),
