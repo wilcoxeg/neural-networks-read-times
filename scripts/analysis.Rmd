@@ -1,5 +1,5 @@
 ---
-title: "CUNY 2020 Analysis"
+title: "CogSci 2020 Analysis"
 output: html_notebook
 ---
 
@@ -110,7 +110,6 @@ to_drop = all_data %>%
   filter(max_n != n) %>%
   select(code, corpus)
 
-#to_drop = all_data %>% group_by(corpus, code) %>% filter(n() != ideal_token_obs_count) %>% ungroup()
 loginfo(paste("Dropping", nrow(to_drop), "observations corresponding to corpus tokens which are missing observations for some model."))
 loginfo(paste("Dropping", to_drop %>% group_by(corpus, code) %>% n_groups(), "tokens which are missing observations for some model."))
 
@@ -139,7 +138,7 @@ loginfo(paste("After drop,", nrow(all_data), "observations (", all_data %>% grou
 ```
 
  
-# Learn models
+# Train Linear Models which are used to assess Delta Log Lik
  
 ```{r}
 # Compute linear model stats for the given training data subset and full test data.
@@ -179,14 +178,15 @@ get_lm_delta_log_lik <- function(test_data, fold, baseline_env, full_env) {
 }
 #####
 # Define regression formulae.
-# Eye-tracking regression: only use surprisal and previous surprisal; SPRT regression: use 2-back features.
 
+# Regression code to fit GAM models.
 #baseline_rt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
 #baselie_sprt_regression = psychometric ~ te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr") + te(prev3_freq, prev3_len, bs = "cr") + te(prev4_freq, prev4_len, bs = "cr")
 
 #full_rt_regression = psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr")
 #full_sprt_regression = psychometric ~ s(surprisal, bs = "cr", k = 20) + s(prev_surp, bs = "cr", k = 20) + s(prev2_surp, bs = "cr", k = 20) + s(prev3_surp, bs = "cr", k = 20) + s(prev4_surp, bs = "cr", k = 20) + te(freq, len, bs = "cr") + te(prev_freq, prev_len, bs = "cr") + te(prev2_freq, prev2_len, bs = "cr") + te(prev3_freq, prev3_len, bs = "cr") + te(prev4_freq, prev4_len, bs = "cr")
 
+# Regression Code to fit linear models
 baseline_rt_regression = psychometric ~ freq + prev_freq + prev2_freq + len + prev_len + prev2_len
 baseline_sprt_regression = psychometric ~ freq + prev_freq + prev2_freq + prev3_freq + prev4_freq + len + prev_len + prev2_len + prev3_len + prev4_len
 
@@ -317,19 +317,19 @@ model_deltas = model_deltas %>%
 model_deltas
 ```
 
-```{r}
+```{r, eval=False}
 # Sanity check: training on train+test data should yield improved performance over training on just training data. (When evaluating on test data.)
-# full_baselines = all_data %>%
-#   group_by(model, training, seed, corpus) %>%
-#   summarise(baseline_train_all_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)) %>%
-#   ungroup()
-# full_baselines
-# 
-# full_baselines %>%
-#   right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
-#   mutate(delta=baseline_train_all_test_lik-baseline_test_lik) %>%
-#   select(-baseline_lik) # %>%
-#   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
+ full_baselines = all_data %>%
+   group_by(model, training, seed, corpus) %>%
+   summarise(baseline_train_all_test_lik = logLik_test(lm(psychometric ~ len + freq + sent_pos, data=.), semi_join(test_data, ., by=c("training", "model", "seed", "corpus")), semi_join(test_data, ., by=c("training", "model", "seed", "corpus"))$psychometric)) %>%
+   ungroup()
+ full_baselines
+ 
+ full_baselines %>%
+   right_join(baselines, by=c("seed", "training", "model", "corpus")) %>%
+   mutate(delta=baseline_train_all_test_lik-baseline_test_lik) %>%
+   select(-baseline_lik) # %>%
+   #select(-baseline_test_lik, -baseline_train_all_test_lik, -baseline_lik, -baseline_test_mse)
 ```
 
 # Load language model data (SyntaxGym, PPL)
@@ -451,7 +451,6 @@ d_resid = model_deltas %>%
 
 # Now plot residual vs SG
 d_resid %>%
-  #filter(corpus != "bnc-brown") %>%
   ggplot(aes(x=resid.sg, y=resid.delta)) +
     theme_bw() +
     scale_shape_manual(values = c(21, 24, 22, 23)) +
@@ -477,7 +476,7 @@ d_resid %>%
           legend.text=element_text(size=14),
           axis.title=element_text(size=18),
           legend.position = "right")
-ggsave("../images/cuny2020/dll_sg.pdf",height=4.5,width=9, device = cairo_pdf)
+ggsave("../images/cogsci2020/dll_sg.pdf",height=4.5,width=9, device = cairo_pdf)
 ```
 
 
@@ -499,7 +498,7 @@ do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
 
-```{r Sanity check: equivalence between analyses}
+```{r Sanity check: equivalence between analyses, eval=False}
 # The residualized analysis and the stepwise regression analysis
 # should yield the same coefficients for the SG score variable.
 #
@@ -552,87 +551,21 @@ model_deltas %>%
           legend.text=element_text(size=12),
           axis.title=element_text(size=12),
           legend.position = "right")
-ggsave("../images/cuny2020/ppl_loglik.pdf",height=5,width=12, device = cairo_pdf)
+ggsave("../images/cogsci2020/ppl_loglik.pdf",height=5,width=12, device = cairo_pdf)
 
 ```
 
-```{r, eval=False}
-
-dll_cor_test = function(df){
-  df %>%
-    summarise(
-      cor = cor.test(df$delta_test_mean, df$test_ppl)$estimate,
-      p = cor.test(df$delta_test_mean, df$test_ppl)$p.value
-    )
-}
-
-model_deltas %>%
-  filter(model != "5gram") %>%
-  group_by(training, corpus) %>%
-    mutate(n = n()) %>%
-  ungroup() %>%
-  filter(n > 2) %>%
-  group_by(training, corpus) %>%
-    do({ dll_cor_test(.) }) %>%
-  ungroup() %>%
-  arrange(corpus)
-
-```
+### Regression: Impact of PPL on Predictive Power
 
 ```{r}
 lmd = model_deltas %>%
-  #filter(model != "5gram") %>%
   mutate(training_vocab=ifelse(str_detect(as.character(training), "gptbpe"),
                                "gptbpe", as.character(training)))
 summary(lmer(delta_test_mean ~ training_vocab:test_ppl + (1 | corpus) + (1 | model), data=lmd))
 ```
 
-
-## Effect of training data size
-
-```{r On predictive power, eval=False}
-model_deltas %>%
-  mutate(train_size = log(train_size)) %>%
-  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
-         bpe = as.factor(bpe)) %>%
-  ggplot(aes(x=train_size, y=delta_test_mean, color=model)) +
-    theme_bw() +
-    geom_errorbar(aes(ymin=delta_test_mean-delta_test_sem, ymax=delta_test_mean+delta_test_sem), width = 0.1) +
-    geom_smooth(method="lm", se=T, alpha=0.2) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=bpe)) +
-    ylab("ΔLogLik per token) +
-    xlab("Log Million Training Tokens") +
-    ggtitle("Training Size vs. Predictive Power") +
-    facet_grid(.~corpus, scales="free") +
-    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
-    theme(axis.text=element_text(size=12),
-          strip.text.x = element_text(size=12),
-          legend.text=element_text(size=8),
-          legend.title=element_text(size=8),
-          axis.title=element_text(size=14),
-          legend.position = "bottom",
-          legend.direction = "horizontal",
-          legend.key.width = unit(0.3,"cm"),
-          legend.spacing.x = unit(0.1, 'cm'))
-#ggsave("../images/cuny2020/training_loglik.png",height=5,width=5)
-```
-
-```{r, eval=False}
-
-model_cor_test = function(df){
-  df %>%
-    summarise(cor = cor.test(df$train_size, df$delta_test_mean)$estimate,
-              p = cor.test(df$train_size, df$delta_test_mean)$p.value)
-}
-
-model_deltas %>%
-  group_by(model, corpus) %>%
-    do({model_cor_test(.)}) %>%
-  ungroup() %>%
-  arrange()
-
-
-```
+## Perplexity vs. SG Score
+This is a reproduction of Figure 2 from Hu et al.
 
 ```{r PPL vs. SG score}
 
@@ -673,53 +606,9 @@ model_deltas %>%
           legend.direction = "horizontal",
           legend.key.width = unit(0.3,"cm"),
           legend.spacing.x = unit(0.1, 'cm'))
-ggsave("../images/cuny2020/ppl_sg.pdf",height=4.5,width=3, device = cairo_pdf)
+ggsave("../images/cogsci2020/ppl_sg.pdf",height=4.5,width=3, device = cairo_pdf)
 ```
 
-
-```{r Size vs. SG score, eval=False}
-model_deltas %>%
-  mutate(train_size = log(train_size)) %>%
-  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
-         bpe = as.factor(bpe)) %>%
-  ggplot(aes(x=train_size, y=sg_score, color=model)) +
-    theme_bw() +
-    geom_smooth(method="lm", se=T, alpha=0.2) +
-    geom_point(stat="identity", position="dodge", alpha=1, size=3, aes(shape=bpe)) +
-    ylab("SG SCore") +
-    xlab("Log Million Training Tokens") +
-    ggtitle("Training Size vs. SG Score") +
-    #scale_color_manual(values = c("#A42EF1", "#3894C8")) +
-    #facet_grid(~model, scales="free") +
-    theme(axis.text=element_text(size=12),
-          strip.text.x = element_text(size=12),
-          legend.text=element_text(size=8),
-          legend.title=element_text(size=8),
-          axis.title=element_text(size=14),
-          legend.position = "bottom",
-          legend.direction = "horizontal",
-          legend.key.width = unit(0.3,"cm"),
-          legend.spacing.x = unit(0.1, 'cm'))
-#ggsave("../images/cuny2020/training_sg.png",height=5,width=4)
-```
-
-
-```{r, eval=False}
-
-model_cor_test = function(df){
-  df %>%
-    summarise(cor = cor.test(df$train_size, df$sg_score)$estimate,
-              p = cor.test(df$train_size, df$sg_score)$p.value)
-}
-
-model_deltas %>%
-  group_by(model) %>%
-    do({model_cor_test(.)}) %>%
-  ungroup()
-
-
-
-```
 
 ## Smith & Levy reproduction
 
@@ -732,7 +621,7 @@ all_data %>%
   facet_wrap(.~corpus, ncol=1, scales="free", strip.position = "right") +
   coord_cartesian(xlim = c(0, 25)) +
   ggtitle("Distribution of Surprisal") +
-ggsave("../images/cuny2020/surp_corr_marginals.png",height=5,width=4)
+ggsave("../images/cogsci2020/surp_corr_marginals.png",height=5,width=4)
 
 ```
 
@@ -824,45 +713,7 @@ write.csv(smooths, "../data/gam_smooths.csv")
 
 ```
 
-```{r, eval=False}
-
-smooths %>%
-  mutate(corp_model = paste(corpus, model, sep=" / "),
-         corp_model = as.factor(corp_model)) %>%
-  #filter(training_vocab == "bllip-xs" | training_vocab == "gptbpe" | training_vocab == "bllip-lg") %>%
-  #filter(training != "bllip-md-gptbpe" & training != "bllip-sm-gptbpe") %>%
-  mutate(bpe = if_else(training_vocab == "gptbpe", "yes", "no"),
-         # training = as.character(training),
-         # training = if_else(training == "bllip-lg-gptbpe", "bllip-lg", training),
-         # training = if_else(training == "bllip-md-gptbpe", "bllip-md", training),
-         # training = if_else(training == "bllip-sm-gptbpe", "bllip-sm", training),
-         # training = if_else(training == "bllip-xs-gptbpe", "bllip-xs", training)
-         ) %>%
-  ggplot(aes(x=surprisal, y=y)) +
-      theme_bw() +
-      geom_line(size=0.5, aes(color=training_vocab, linetype=bpe)) +
-      #geom_line(aes(y=y_lower), linetype="dashed") +
-      geom_ribbon(aes(ymin=y_lower,ymax=y_upper), alpha=0.2) +
-      #geom_line(aes(y=y_upper), linetype="dashed") +
-      facet_wrap(~corp_model, ncol=4, scales="free") +
-      scale_color_manual(values = c("bllip-lg"="#440154FF",
-                                    "bllip-md"="#39568CFF",
-                                    "bllip-sm"="#1F968BFF",
-                                    "bllip-xs"="#73D055FF",
-                                    "gptbpe"="#f0941f")) +
-      scale_x_continuous(labels=c(0, 10, 20), breaks=c(0, 10, 20), minor_breaks = NULL) +
-      #scale_y_continuous(limits=c(200, 350)) +
-      ylab("Slow-down due to surprisal (ms)") +
-      ggtitle("Surprisal slow-down effects") +
-      theme(legend.position = "left",
-            strip.background = element_rect(fill="white"),
-            strip.placement = "outside") +
-      labs(x="Surprisal", color="Training\nvocabulary", linetype="BPE")
-ggsave("../images/cuny2020/gam_surp_corr.png", height=5,width=8)
-
-```
-
-
+### Plot the GAM model fits
 
 ```{r}
 ymin = -40
@@ -876,6 +727,7 @@ get_d_points = function(df, model, training, corpus){
   return(data.frame(model, training, corpus, x, y))
 }
 
+# Get the density points
 density_data = all_data %>%
   mutate(model = recode(model, vanilla="lstm")) %>%
   group_by(model, training, corpus) %>%
@@ -922,8 +774,7 @@ ggplot() +
     labs(x="Surprisal (bits)", y="Slowdown due to surprisal (ms)",
          linetype="BPE",
          color="Training data")
- ggsave("../images/cuny2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
-
+ ggsave("../images/cogsci2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
 
 ```
 
