@@ -1,6 +1,8 @@
 ---
 title: "CogSci 2020 Analysis"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 # Packages and utilities
