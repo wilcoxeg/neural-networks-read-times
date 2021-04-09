@@ -369,6 +369,8 @@ language_model_data = read.csv("../data/model_metadata.csv") %>%
   distinct(model, training, seed, .keep_all = TRUE)
 table(language_model_data$seed)
 table(model_deltas$seed)
+
+language_model_data
 ```
 
 First join delta-metric data with model auxiliary data.
@@ -393,8 +395,11 @@ model_deltas <- model_deltas %>%
   filter(model != "ordered-neurons")
 
 # Exclude bad GPT models.
+# model_deltas <- model_deltas %>%
+#   filter(model != "gpt2" | !(seed %in% c(1581955288, 1581861474, 1582126320)))
+# DEV: Exclude the GOOD GPT models as a sanity check -- should get similar results to last time.
 model_deltas <- model_deltas %>%
-  filter(model != "gpt2" | !(seed %in% c(1581955288, 1581861474, 1582126320)))
+   filter(model != "gpt2" | !(seed %in% c(1611265210, 1611262494)))
 ```
 
 
@@ -796,7 +801,6 @@ ggplot() +
  ggsave("../images/cogsci2020/gam_surp_corr_full.pdf", height=5.5,width=12, device = cairo_pdf)
 
 ```
-
 
 
 
