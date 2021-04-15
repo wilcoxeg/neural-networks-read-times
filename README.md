@@ -11,15 +11,13 @@ Questions? Feel free to contact wilcoxeg@g.harvard.edu
 
 ## Analysis Reproduction
 
-• If you wish to reproduce only our analysis, we have provided an aggregated data file `harmonized_results.csv`. That contains harmonized by-word surprisal values for each model and testing corpus.
+Analysis and figure generation code can be found in `analysis.Rmd`. Images are saved to `images/cogsci2020/`.
+This script depends on a large file `data/harmonized_results.ipynb`. You can [download our copy](#download-the-data) or manually generate your own for novel data using the [pipeline description](#data-pipeline-reproduction) below.
 
-• Analysis and figure generation code can be found in `analysis.Rmd`. Images are saved to `/images/cogsci2020/`.
+- Log-liklihood can be computed with a linear model, or with a GAM, however this is not set globally. You need to uncomment code in order to switch from the LM to the GAM.
+- One thing to note: Fittin the GAM models for the reproduction of Figure 1 takes > 1 hour on a typical PC. Instead of running the fits, feel free to use the outputs of our fits in `/data/gam_smooths.sl2013.all.csv`, which can be used for plotting and analysis.
 
-• Log-liklihood can be computed with a linear model, or with a GAM, however this is not set globally. You need to uncomment code in order to switch from the LM to the GAM.
-
-One thing to note: Fittin the GAM models for the reproduction of Figure 1 takes > 1 hour on a typical PC. Instead of running the fits, feel free to use the outputs of our fits in `/data/gam_smooths.sl2013.all.csv`, which can be used for plotting and analysis.
-
-## (1) Data Pipeline Reproduction
+## Data Pipeline Reproduction
 
 ### Generate Data for Neural LMs
 
@@ -31,9 +29,9 @@ One thing to note: Fittin the GAM models for the reproduction of Figure 1 takes 
 
 • We do not provide code for deriving by-word surprisal values for neural LMs
 
-## (2) Preprocess Human RT Data
+### Preprocess Human RT Data
 
-• `average_sprs_script.rmd` reads in the human reading-time data from `data/corpora/bnc-brown_reference.csv` and `data/natural-stories-reference.csv` and calculates the cross-participant, by-word average. Saves each word with its reading time and a unique code into the /`data/humna_rts/` folder. For the natural stories corpus, each word is assigned a unique code.
+• `average_sprs_script.rmd` reads in the human reading-time data from `data/corpora/bnc-brown_reference.csv` and `data/natural-stories-reference.csv` and calculates the cross-participant, by-word average. Saves each word with its reading time and a unique code into the /`data/human_rts/` folder. For the natural stories corpus, each word is assigned a unique code.
 
 • All codes are ordered, so the word with code 010012 immedietly proceeds 010013 in the reading-time corpus.
 
@@ -43,16 +41,13 @@ One thing to note: Fittin the GAM models for the reproduction of Figure 1 takes 
 
 • RT results are stored with three columns `code`, `token`, `rt`.
 
-• The `/Model Results/` directory contains results by model type. Current models include: 5-Gram, GPT2, VanillaLSTM and RNNG
+• The `data/model_results` directory contains language model surprisal estimates, categorized by model architecture. Current models include: 5-Gram, GPT2, VanillaLSTM and RNNG
 	|
-	--> Sub-Subdirectories contain results by test corpus. Model results should be in the four-column LM ZOO output format: `sentence_idx`, `token_idx`, `token`, `surprisal`
+	--> Sub-Subdirectories contain results by test corpus. Model results should be in the four-column LM Zoo output format: `sentence_idx`, `token_idx`, `token`, `surprisal`
 
-## (3) Harmonize Model Results
+### Harmonize Model Results
 
-• `harmonize.py` takes individual model results from the `data/model_results/` directory and harmonizes them with human reading times. Words for which the tokenization between the model output and the human data presentation are discarded.
+As a final preprocessing step, we harmonize (align) the human reading time data with language model surprisal estimates. This is necessary because the various reading time corpora and language models all deploy different preprocessing/tokenization procedures.
 
-• Assumes model results and human RT results are stored in the format described below, in `data`, except for the Dundee corpus, where no code is given. In this case, the script genreates a code, which is the row-number of the word, combined with the text ID of the portion of the dundee corpus where the word occured.
-
-• Takes a path to a corpus, which is used to calculate log frequency of words. (I have been using wikitext 2, which is also what was reported in the CogSci submission)
-
-
+You can reproduce the harmonization step by running the notebook [`scripts/harmonize.ipynb`][scripts/harmonize.ipynb]. This notebook reads model surprisal estimates from `data/model_results`
+`harmonize.py` takes individual model surprisal estimates from the `data/model_results` directory and harmonizes them with human reading time data in `data/human_rts`. It generates a large file `data/harmonized_results.csv`.

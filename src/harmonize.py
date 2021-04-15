@@ -1,3 +1,15 @@
+"""
+Defines logic for harmonizing (aligning) human reading time data with model
+surprisal data.
+
+This is necessary because the various reading time corpora and various language
+models all deploy different preprocessing / tokenization procedures.
+
+To run this script to reproduce the CogSci results, use the notebook at
+`notebooks/harmonize.ipynb`.
+"""
+
+
 from collections import Counter
 
 import regex as re
@@ -16,31 +28,31 @@ def harmonize_rows(ref, d, log_target_code=None):
     """
     Harmonize reading-time and surprisal data which differs in tokenization
     procedures and UNKification.
-    
+
     Args:
         ref: List of reading-time observations, each a tuple of the form
             `(code, token, rt)`, where `code` is a unique integer reference
             for the token within the relevant corpus.
         d: List of model surprisal observations, each a tuple of the form
             `(model_token, surprisal)`.
-            
+
     Returns:
         result: A list of merged reading-time--surprisal data, with each item
             a tuple of the form `(model_token, surprisal, code, token, rt)`.
     """
-    
+
     mismatches = Counter()
     result = []
     curr_d = d.pop(0)
     curr_ref = ref.pop(0)
-    
+
     def process_detokenized(curr_d, curr_ref):
         """
         Remove detokenized trailing and leading punctuation from around the
         current matched data--reference pair.
-        
+
         NB updates `ref`, `d` in-place.
-        
+
         Returns:
             changed: True if the surrounding context was updated.
             curr_d: updated curr_d pointer
@@ -48,13 +60,13 @@ def harmonize_rows(ref, d, log_target_code=None):
         """
         model_token, surprisal = curr_d
         code, rt_token, rt = curr_ref
-        
+
         changed = True
-        
+
         if punct_at_start_re.search(rt_token) and punct_at_end_re.search(rt_token):
             rt_token_new = punct_at_start_re.sub("", punct_at_end_re.sub("", rt_token))
             curr_ref = (code, rt_token_new, rt)
-            
+
             # If current model token(s) are that punctuation, drop those tokens
             match = punct_at_start_re.findall(rt_token)[0]
             while match.startswith(model_token):
@@ -68,7 +80,7 @@ def harmonize_rows(ref, d, log_target_code=None):
             while match.startswith(d[0][0]):
                 match = match[len(d[0][0]):]
                 d.pop(0)
-                    
+
         # If current ref has trailing punctuation, remove and re-check
         elif punct_at_end_re.search(rt_token):
             rt_token_new = punct_at_end_re.sub("", rt_token)
@@ -83,7 +95,7 @@ def harmonize_rows(ref, d, log_target_code=None):
         elif punct_at_start_re.search(rt_token):
             rt_token_new = punct_at_start_re.sub("", rt_token)
             curr_ref = (code, rt_token_new, rt)
-            
+
             # If current model token(s) are that punctuation, drop those tokens
             match = punct_at_start_re.findall(rt_token)[0]
             while match.startswith(model_token):
@@ -91,11 +103,11 @@ def harmonize_rows(ref, d, log_target_code=None):
                 model_token, surprisal = d.pop(0)
 
             curr_d = (model_token, surprisal)
-            
+
         code, rt_token, rt = curr_ref
         # Process PTB detokenized contractions
         if contractions_re.search(rt_token):
-            
+
             # Check that future model tokens comport with this detected
             # contraction.
             #
@@ -120,20 +132,20 @@ def harmonize_rows(ref, d, log_target_code=None):
                 changed = False
         else:
             changed = False
-            
+
         return changed, curr_d, curr_ref
-    
+
     def log(curr_d, curr_ref, flags=""):
         model_token, surprisal = curr_d
         code, rt_token, rt = curr_ref
         print(f"{flags}\t{code}\t{rt_token}\t{model_token}")
-    
+
     to_print = 0
     mismatched = [0, None]
     while len(d) > 10:
         model_token, surprisal = curr_d
         code, rt_token, rt = curr_ref
-        
+
         #### HACKS
         # Dundee 61827: "[sic]" has corresponding mysterious "UNK-CAPS-DASH"
         # token preceding it. It's possible that the punctuation was dropped
@@ -141,23 +153,23 @@ def harmonize_rows(ref, d, log_target_code=None):
         if code == 61827 and rt_token == "[sic]" and model_token == "UNK-CAPS-DASH":
             curr_d = d.pop(0)
             continue
-        
+
         if punct_at_start_re.search(rt_token):
             to_print = 10
-            
+
         if to_print > 0:
             #log(curr_d, curr_ref)
             to_print -= 1
             if to_print == 0:
                 pass
                 #print("=======")
-                
+
         if log_target_code is not None and code > log_target_code - 10 and code < log_target_code + 10:
             log(curr_d, curr_ref, "**" if code == log_target_code else "")
-                
+
         if mismatched[0] == 5:
             mismatches[mismatched[1]] += 1
-        
+
         if model_token == rt_token:
             result.append(curr_d + curr_ref)
             curr_d = d.pop(0)
@@ -174,7 +186,7 @@ def harmonize_rows(ref, d, log_target_code=None):
                 process_detokenized(curr_d, curr_ref)
                 curr_d = d.pop(0)
                 curr_ref = ref.pop(0)
-                
+
             # Check for possible punctuation modifications
             else:
                 updated, curr_d, curr_ref = process_detokenized(curr_d, curr_ref)
@@ -201,7 +213,7 @@ def unkify(token):
     """
     if len(token.rstrip()) == 0:
         return "UNK"
-    
+
     numCaps = 0
     hasDigit = False
     hasDash = False
@@ -231,7 +243,7 @@ def unkify(token):
     if hasDigit:
         result = result + '-NUM'
     if hasDash:
-        result = result + '-DASH' 
+        result = result + '-DASH'
     if lower[-1] == 's' and len(lower) >= 3:
         ch2 = lower[-2]
         if not(ch2 == 's') and not(ch2 == 'i') and not(ch2 == 'u'):
@@ -244,7 +256,7 @@ def unkify(token):
         elif lower[-3:] == 'ion':
             result = result + '-ion'
         elif lower[-2:] == 'er':
-            result = result + '-er'            
+            result = result + '-er'
         elif lower[-3:] == 'est':
             result = result + '-est'
         elif lower[-2:] == 'ly':
