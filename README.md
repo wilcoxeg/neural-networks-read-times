@@ -49,4 +49,4 @@ This script depends on a large file `data/harmonized_results.ipynb`. You can [do
 
 As a final preprocessing step, we harmonize (align) the human reading time data with language model surprisal estimates. This is necessary because the various reading time corpora and language models all deploy different preprocessing/tokenization procedures.
 
-You can reproduce the harmonization step by running the notebook [`scripts/harmonize.ipynb`](scripts/harmonize.ipynb). This notebook reads model surprisal estimates from `data/model_results` directory and harmonizes them with human reading time data in `data/human_rts`. It generates a large file `data/harmonized_results.csv`.
+You can reproduce the harmonization step by running the notebook [`scripts/harmonize.ipynb`](scripts/harmonize.ipynb). This notebook reads model surprisal estimates from `data/model_results` directory and harmonizes them with human reading time data in `data/human_rts`. It generates a large file `data/harmonized_results.csv`, which can finally be used in the [main analysis script](#analysis-reproduction).
