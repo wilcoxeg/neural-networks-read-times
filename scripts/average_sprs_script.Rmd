@@ -16,15 +16,15 @@ library(tidyverse)
 brown_spr = read.csv("../data/corpora/brown_spr.csv") %>%
   group_by(code, word) %>%
     summarise(psychometric = mean(time)) %>%
-  ungroup() %>%
-write.table(brown_spr, "../data/human_rts/bnc-brown.txt", sep="\t", row.names = F)
+  ungroup()
+write.table(brown_spr, "../data/human_rts/bnc-brown/bnc-brown.txt", sep="\t", row.names = F)
 
-natural_spr = read.csv("../data/corpora/natural_stories_rts.csv", sep="\t") %>%
+natural_spr = read.csv("../data/corpora/natural_stories_rts.tsv", sep="\t") %>%
   mutate(code = (item*10000) + zone) %>%
   group_by(code, word) %>%
     summarise(psychometric = mean(RT)) %>%
   ungroup()
-write.table(natural_spr, "../data/human_rts/natural-stories.txt", sep="\t", row.names = F)
+write.table(natural_spr, "../data/human_rts/natural-stories/natural-stories.txt", sep="\t", row.names = F)
 
 
 
