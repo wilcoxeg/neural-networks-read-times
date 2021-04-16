@@ -254,7 +254,6 @@ for(i in 1:K) {
   # Compute a baseline linear model for each model--training--seed--RT-corpus combination.
   baselines = train_data %>%
     group_by(model, training, seed, corpus) %>%
-      print(model) %>%
       do(baseline_corpus(unique(.$corpus), ., test_data, i, baseline_env)) %>%
     ungroup() %>%
     mutate(seed = as.factor(seed),
@@ -334,7 +333,7 @@ model_deltas = model_deltas %>%
 model_deltas
 ```
 
-```{r, eval=False}
+```{r, eval=FALSE}
 # Sanity check: training on train+test data should yield improved performance over training on just training data. (When evaluating on test data.)
  full_baselines = all_data %>%
    group_by(model, training, seed, corpus) %>%
@@ -519,7 +518,7 @@ do_stepwise_regression("dundee")
 do_stepwise_regression("natural-stories")
 ```
 
-```{r Sanity check: equivalence between analyses, eval=False}
+```{r Sanity check: equivalence between analyses, eval=FALSE}
 # The residualized analysis and the stepwise regression analysis
 # should yield the same coefficients for the SG score variable.
 #
@@ -634,7 +633,7 @@ ggsave("../images/cogsci2020/ppl_sg.pdf",height=4.5,width=3, device = cairo_pdf)
 ## Smith & Levy reproduction
 
 #### This redone so that it's unique for each model
-```{r, eval=False}
+```{r, eval=FALSE}
 all_data %>%
   ggplot(aes(x=surprisal, color=model)) +
   theme_bw() +
@@ -646,7 +645,7 @@ ggsave("../images/cogsci2020/surp_corr_marginals.png",height=5,width=4)
 
 ```
 
-```{r Fit GAMs, eval=False}
+```{r Fit GAMs, eval=FALSE}
 k = 1.97
 
 # Fit a GAM for a bootstrap sample.
@@ -736,7 +735,7 @@ write.csv(smooths, "../data/gam_smooths.csv")
 
 ### Plot the GAM model fits
 
-```{r}
+```{r, eval=FALSE}
 ymin = -40
 ymax = 100
 xmin = 0
